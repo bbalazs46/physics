@@ -211,6 +211,7 @@
   const MIN_TRAIL_LINE_WIDTH = 1.2;
   const TRAIL_LINE_WIDTH_FACTOR = 0.45;
   const POTENTIAL_HUE_TRANSITION_RATIO = 0.14;
+  const MIN_POTENTIAL_TRANSITION_RANGE = 1;
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
   const DEFAULT_FIELD_LINE_FREQUENCY = 12;
@@ -274,6 +275,26 @@
 
   function getPotentialColorScheme() {
     return POTENTIAL_COLOR_SCHEMES[colorScheme] || POTENTIAL_COLOR_SCHEMES.forest;
+  }
+
+  /**
+   * Returns the shortest signed hue distance between two angles on the color wheel.
+   * @param {number} fromHue
+   * @param {number} toHue
+   * @returns {number}
+   */
+  function shortestHueDistance(fromHue, toHue) {
+    // Normalize the angular difference into [-180, 180] so interpolation follows the shorter arc.
+    return ((((toHue - fromHue) % 360) + 540) % 360) - 180;
+  }
+
+  /**
+   * Applies smooth Hermite interpolation to a normalized mix value in the [0, 1] range.
+   * @param {number} value
+   * @returns {number}
+   */
+  function smoothStep(value) {
+    return value * value * (3 - (2 * value));
   }
 
   function updateParticleAppearance(particle) {
@@ -781,13 +802,14 @@
     }
 
     const scale = maxMagnitude || 1;
-    const transitionScale = Math.max(scale * POTENTIAL_HUE_TRANSITION_RATIO, 1);
+    const transitionScale = Math.max(scale * POTENTIAL_HUE_TRANSITION_RATIO, MIN_POTENTIAL_TRANSITION_RANGE);
     for (const sample of samples) {
       const t = Math.min(1, sample.magnitude / scale);
       const normalizedPotential = Math.max(-1, Math.min(1, sample.potential / transitionScale));
+      // Map the signed potential from [-1, 1] into [0, 1] by scaling and offsetting it by 0.5, then smooth that mix factor for a softer hue transition.
       const transition = (normalizedPotential * 0.5) + 0.5;
-      const smoothedTransition = transition * transition * (3 - (2 * transition));
-      const hueDelta = ((((scheme.positiveHue - scheme.negativeHue) % 360) + 540) % 360) - 180;
+      const smoothedTransition = smoothStep(transition);
+      const hueDelta = shortestHueDistance(scheme.negativeHue, scheme.positiveHue);
       const hue = (scheme.negativeHue + (hueDelta * smoothedTransition) + 360) % 360;
       const lightness = POTENTIAL_MAP_LIGHTNESS_MIN + t * POTENTIAL_MAP_LIGHTNESS_RANGE;
       ctx.fillStyle = `hsla(${hue}, 75%, ${lightness}%, 0.58)`;
