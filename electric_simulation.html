@@ -192,7 +192,7 @@
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
   const WALL_BOUNCE_COEFFICIENT = 1.0;
-  const WALL_CHARGE_SAMPLE_SPACING = 42;
+  const WALL_CHARGE_SAMPLE_SPACING = 42; // Dense enough to look continuous along the border without making the field rendering too expensive.
   const WALL_CHARGE_SAMPLE_CHARGE = 0.08;
   const ENERGY_CORRECTION_TOLERANCE = 1e-4; // Absolute total-energy delta that is treated as harmless floating-point noise.
   const DRAG_RELEASE_VELOCITY_SCALE = 0.45;
@@ -318,6 +318,18 @@
       cachedWallChargeSamples = buildWallChargeSamples();
     }
     return cachedWallChargeSamples;
+  }
+
+  function applyChargeAcceleration(targetParticle, sourceX, sourceY, sourceCharge, acceleration) {
+    const deltaX = targetParticle.x - sourceX;
+    const deltaY = targetParticle.y - sourceY;
+    const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
+    const dist = Math.sqrt(distSq);
+    const rawForce = fieldStrength * targetParticle.charge * sourceCharge / distSq;
+    const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
+    const safeMass = Math.max(targetParticle.mass, MIN_PARTICLE_MASS);
+    acceleration.x += (force * deltaX / dist) / safeMass;
+    acceleration.y += (force * deltaY / dist) / safeMass;
   }
 
   /**
@@ -803,34 +815,19 @@
       const currentParticle = particles[i];
       if (currentParticle.pinned || currentParticle === dragged) continue;
 
-      let accelerationX = 0;
-      let accelerationY = 0;
+      const acceleration = { x: 0, y: 0 };
       for (let j = 0; j < particles.length; j++) {
         if (i === j) continue;
         const otherParticle = particles[j];
-        const deltaX = currentParticle.x - otherParticle.x;
-        const deltaY = currentParticle.y - otherParticle.y;
-        const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
-        const dist = Math.sqrt(distSq);
-        const rawForce = fieldStrength * currentParticle.charge * otherParticle.charge / distSq;
-        const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
-        accelerationX += (force * deltaX / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
-        accelerationY += (force * deltaY / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
+        applyChargeAcceleration(currentParticle, otherParticle.x, otherParticle.y, otherParticle.charge, acceleration);
       }
 
       for (const wallSample of getWallChargeSamples()) {
-        const deltaX = currentParticle.x - wallSample.x;
-        const deltaY = currentParticle.y - wallSample.y;
-        const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
-        const dist = Math.sqrt(distSq);
-        const rawForce = fieldStrength * currentParticle.charge * wallSample.charge / distSq;
-        const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
-        accelerationX += (force * deltaX / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
-        accelerationY += (force * deltaY / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
+        applyChargeAcceleration(currentParticle, wallSample.x, wallSample.y, wallSample.charge, acceleration);
       }
 
-      currentParticle.vx += accelerationX;
-      currentParticle.vy += accelerationY;
+      currentParticle.vx += acceleration.x;
+      currentParticle.vy += acceleration.y;
     }
 
     // First keep the conservative Coulomb update energy-neutral, then apply damping so friction can still remove energy.
