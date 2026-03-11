@@ -385,7 +385,8 @@
     return fieldStrength * chargeProduct / distSq;
   }
 
-  // With the 1/r repulsion path commented out, the simulation always uses the softened 1/r² interaction.
+  // With the 1/r repulsion path commented out, the simulation always uses the default Coulomb interaction.
+  // Here distSq = r² + ε and dist = sqrt(r² + ε), so the force and potential stay numerically softened.
   function interactionPotentialEnergy(chargeProduct, dist) {
     return fieldStrength * chargeProduct / dist;
   }
@@ -474,11 +475,6 @@
   function updateContourControlState() {
     contourLineFrequencyInput.disabled = uniformContoursEnabled;
     uniformContourStepInput.disabled = !uniformContoursEnabled;
-  }
-
-  function updateEnergyCorrectionAvailability() {
-    energyCorrectionInput.disabled = false;
-    energyCorrectionInput.title = '';
   }
 
   function trimParticleTrail(particle) {
@@ -701,12 +697,6 @@
     updateEditorValues();
     resetTrackedTotalEnergy();
   });
-
-  // inverseRepulsionInput.addEventListener('change', () => {
-  //   inverseDistanceRepulsionEnabled = inverseRepulsionInput.checked;
-  //   updateEnergyCorrectionAvailability();
-  //   resetTrackedTotalEnergy();
-  // });
 
   dampingInput.addEventListener('input', () => {
     damping = parseFloat(dampingInput.value);
@@ -1323,7 +1313,8 @@
 
   updateEditorValues();
   updateContourControlState();
-  updateEnergyCorrectionAvailability();
+  energyCorrectionInput.disabled = false;
+  energyCorrectionInput.title = '';
   initDemo();
   resetTrackedTotalEnergy();
   setMode('move');
