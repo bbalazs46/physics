@@ -50,6 +50,7 @@
         <option value="field">Erővonalak</option>
         <option value="equipotential">Potenciál szintvonalak</option>
         <option value="potential">Potenciál nagysága</option>
+        <option value="potential-equipotential">Potenciál színe + szintvonalak</option>
       </select>
     </div>
 
@@ -115,7 +116,7 @@
   </div>
 
   <div id="status">Mozgasd a részecskéket, vagy adj hozzá új töltéseket a vásznon.</div>
-  <p id="hint">A háttér a mezőt, a szintvonalakat vagy a potenciál nagyságát mutathatja.</p>
+  <p id="hint">A háttér mutathatja a mezőt, a szintvonalakat, a potenciál nagyságát vagy ezek kombinációját.</p>
 </div>
 
 <div id="canvas-container">
@@ -176,7 +177,6 @@
   const DRAG_VELOCITY_FRAME_MS = 1000 / DRAG_VELOCITY_REFERENCE_FPS;
   const DRAG_VELOCITY_SMOOTHING_FACTOR = 0.65;
   const FIELD_LINE_SEED_OFFSET = 6;
-  const FIELD_ARROW_HALF_LENGTH = 6;
   const POTENTIAL_MAP_LIGHTNESS_MIN = 12;
   const POTENTIAL_MAP_LIGHTNESS_RANGE = 55;
   const POTENTIAL_COLOR_SCHEMES = {
@@ -184,13 +184,16 @@
     classic: { positiveHue: 2, negativeHue: 218 }
   };
   // Visual density controls for the three background renderers.
-  const FIELD_ARROW_GRID_STEP = 34;
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 26;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 3;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
   const DEFAULT_FIELD_LINE_FREQUENCY = 12;
+  const FIELD_LINE_COLOR = 'rgba(238, 246, 255, 0.34)';
+  const FIELD_FLOW_COLOR = 'rgba(255, 255, 255, 0.95)';
+  const FIELD_FLOW_DASH = [3, 12];
+  const FIELD_FLOW_SPEED = 0.11;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -707,7 +710,7 @@
     }
   }
 
-  function traceFieldLine(seedX, seedY, direction, strokeStyle) {
+  function traceFieldLine(seedX, seedY, direction, time) {
     let x = seedX;
     let y = seedY;
 
@@ -733,38 +736,30 @@
       if (nearParticle) break;
     }
 
-    ctx.strokeStyle = strokeStyle;
-    ctx.lineWidth = 1.15;
+    ctx.save();
+    ctx.strokeStyle = FIELD_LINE_COLOR;
+    ctx.lineWidth = 1.2;
     ctx.stroke();
+    ctx.strokeStyle = FIELD_FLOW_COLOR;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.setLineDash(FIELD_FLOW_DASH);
+    ctx.lineDashOffset = -direction * time * FIELD_FLOW_SPEED;
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawFieldLines() {
     if (particles.length === 0) return;
-    const palette = getPalette();
+    const animationTime = performance.now();
     for (const particle of particles) {
       if (Math.abs(particle.charge) < 0.05) continue;
       const direction = particle.charge > 0 ? 1 : -1;
-      const strokeStyle = particle.charge > 0 ? `${palette.positive}cc` : `${palette.negative}cc`;
       for (let i = 0; i < fieldLineFrequency; i++) {
         const angle = (Math.PI * 2 * i) / fieldLineFrequency;
         const seedX = particle.x + Math.cos(angle) * (particle.r + FIELD_LINE_SEED_OFFSET);
         const seedY = particle.y + Math.sin(angle) * (particle.r + FIELD_LINE_SEED_OFFSET);
-        traceFieldLine(seedX, seedY, direction, strokeStyle);
-      }
-    }
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    for (let x = FIELD_ARROW_GRID_STEP / 2; x < canvas.width; x += FIELD_ARROW_GRID_STEP) {
-      for (let y = FIELD_ARROW_GRID_STEP / 2; y < canvas.height; y += FIELD_ARROW_GRID_STEP) {
-        const { fieldX, fieldY } = electricFieldAt(x, y);
-        const magnitude = Math.hypot(fieldX, fieldY);
-        if (magnitude < 0.0001) continue;
-        const unitX = fieldX / magnitude;
-        const unitY = fieldY / magnitude;
-        ctx.beginPath();
-        ctx.moveTo(x - unitX * FIELD_ARROW_HALF_LENGTH, y - unitY * FIELD_ARROW_HALF_LENGTH);
-        ctx.lineTo(x + unitX * FIELD_ARROW_HALF_LENGTH, y + unitY * FIELD_ARROW_HALF_LENGTH);
-        ctx.stroke();
+        traceFieldLine(seedX, seedY, direction, animationTime);
       }
     }
   }
@@ -778,6 +773,9 @@
     if (backgroundMode === 'potential') {
       drawPotentialMap();
     } else if (backgroundMode === 'equipotential') {
+      drawEquipotentialLines();
+    } else if (backgroundMode === 'potential-equipotential') {
+      drawPotentialMap();
       drawEquipotentialLines();
     } else {
       drawFieldLines();
