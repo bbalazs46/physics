@@ -152,7 +152,7 @@
   <div class="section">
     <h3>Labdák</h3>
     <div class="btn-group">
-      <button class="btn-neutral" id="btnMove" aria-label="Labdák mozgatása">✋ Labdák mozgatása</button>
+      <button class="btn-neutral" id="btnMove">✋ Labdák mozgatása</button>
       <button class="btn-add"    id="btnAdd">➕ Labda hozzáadása</button>
       <button class="btn-delete" id="btnDelete">🗑️ Labda törlése</button>
       <button class="btn-pin"    id="btnPin">📌 Labda rögzítése</button>
@@ -367,20 +367,20 @@
   function addSpring(a, b) {
     if (a === b) return;
     if (springExists(a, b)) return;
-    const dx = b.x - a.x, dy = b.y - a.y;
-    springs.push({ a, b, rest: zeroRestLength ? 0 : (Math.sqrt(dx*dx + dy*dy) || DEFAULT_SPRING_REST_LENGTH) });
+    springs.push({ a, b, rest: getSpringRestLength(a, b) });
   }
 
   function updateSpringRestLengths() {
     for (const s of springs) {
-      if (zeroRestLength) {
-        s.rest = 0;
-      } else {
-        const dx = s.b.x - s.a.x;
-        const dy = s.b.y - s.a.y;
-        s.rest = Math.sqrt(dx*dx + dy*dy) || DEFAULT_SPRING_REST_LENGTH;
-      }
+      s.rest = getSpringRestLength(s.a, s.b);
     }
+  }
+
+  function getSpringRestLength(a, b) {
+    if (zeroRestLength) return 0;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    return Math.sqrt(dx*dx + dy*dy) || DEFAULT_SPRING_REST_LENGTH;
   }
 
   // ─── Canvas mouse helpers ─────────────────────────────────────────────────────
@@ -447,6 +447,7 @@
       dragged  = hit;
       dragOffX = hit.x - x;
       dragOffY = hit.y - y;
+      canvas.style.cursor = 'grabbing';
     }
   }
 
@@ -461,6 +462,7 @@
 
   function onPointerUp(e) {
     dragged = null;
+    if (mode === 'move') canvas.style.cursor = 'grab';
   }
 
   canvas.addEventListener('mousedown',  onPointerDown);
