@@ -127,7 +127,20 @@
         <span>Szintvonalak gyakorisága</span>
         <span id="contourLineFrequencyVal">12</span>
       </div>
-      <input type="range" id="contourLineFrequencyInput" min="1" max="24" step="1" value="12" />
+      <input type="range" id="contourLineFrequencyInput" min="1" max="24" step="1" value="10" />
+    </div>
+
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="uniformContoursInput" />
+      <label for="uniformContoursInput">Egységes szintvonalköz</label>
+    </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Szintvonal lépésköz</span>
+        <span id="uniformContourStepVal">5</span>
+      </div>
+      <input type="range" id="uniformContourStepInput" min="1" max="80" step="1" value="5" />
     </div>
 
     <p class="control-note mt-8">Az 1-hez közeli potenciálfelbontás részletesebb, de lassabb megjelenítést okozhat.</p>
@@ -191,6 +204,9 @@
   const fieldLineFrequencyVal = document.getElementById('fieldLineFrequencyVal');
   const contourLineFrequencyInput = document.getElementById('contourLineFrequencyInput');
   const contourLineFrequencyVal = document.getElementById('contourLineFrequencyVal');
+  const uniformContoursInput = document.getElementById('uniformContoursInput');
+  const uniformContourStepInput = document.getElementById('uniformContourStepInput');
+  const uniformContourStepVal = document.getElementById('uniformContourStepVal');
 
   const modeButtons = [btnMove, btnAdd, btnDelete, btnPin];
   const PALETTES = {
@@ -220,6 +236,7 @@
   // Visual density controls for the three background renderers.
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
+  const DEFAULT_UNIFORM_CONTOUR_STEP = 5;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
   const DEFAULT_TRAIL_LENGTH = 200; // Long enough to reveal motion without cluttering the field view.
   const MAX_TRAIL_SEGMENT_ALPHA = 0.42; // Keep trails visible while leaving the field rendering readable underneath.
@@ -277,6 +294,8 @@
   let potentialResolution = DEFAULT_POTENTIAL_GRID_RESOLUTION;
   let fieldLineFrequency = DEFAULT_FIELD_LINE_FREQUENCY;
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
+  let uniformContoursEnabled = false;
+  let uniformContourStep = DEFAULT_UNIFORM_CONTOUR_STEP;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
@@ -398,6 +417,12 @@
     potentialResolutionVal.textContent = Math.round(potentialResolution);
     fieldLineFrequencyVal.textContent = Math.round(fieldLineFrequency);
     contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
+    uniformContourStepVal.textContent = Math.round(uniformContourStep);
+  }
+
+  function updateContourControlState() {
+    contourLineFrequencyInput.disabled = uniformContoursEnabled;
+    uniformContourStepInput.disabled = !uniformContoursEnabled;
   }
 
   function trimParticleTrail(particle) {
@@ -442,6 +467,21 @@
       positiveLevels.push((index / (contourLineFrequency + 1)) * MAX_CONTOUR_LEVEL_SCALE);
     }
     return positiveLevels.map(level => -level).reverse().concat(positiveLevels);
+  }
+
+  function getContourLevels(maxAbs) {
+    if (uniformContoursEnabled) {
+      const positiveLevels = [];
+      const step = Math.max(0.01, uniformContourStep);
+      for (let level = step; level <= maxAbs + INTERPOLATION_EPSILON; level += step) {
+        positiveLevels.push(level);
+      }
+      return positiveLevels.map(level => -level).reverse().concat(positiveLevels);
+    }
+
+    return getContourLevelFactors()
+      .map(factor => factor * (maxAbs || 1))
+      .filter(level => Math.abs(level) > 0.01);
   }
 
   function syncControlsToSelectedParticle() {
@@ -640,6 +680,16 @@
 
   contourLineFrequencyInput.addEventListener('input', () => {
     contourLineFrequency = parseInt(contourLineFrequencyInput.value, 10);
+    updateEditorValues();
+  });
+
+  uniformContoursInput.addEventListener('change', () => {
+    uniformContoursEnabled = uniformContoursInput.checked;
+    updateContourControlState();
+  });
+
+  uniformContourStepInput.addEventListener('input', () => {
+    uniformContourStep = parseInt(uniformContourStepInput.value, 10);
     updateEditorValues();
   });
 
@@ -945,9 +995,7 @@
       }
     }
 
-    const levels = getContourLevelFactors()
-      .map(factor => factor * (maxAbs || 1))
-      .filter(level => Math.abs(level) > 0.01);
+    const levels = getContourLevels(maxAbs);
 
     for (const level of levels) {
       ctx.beginPath();
@@ -1191,6 +1239,7 @@
   }
 
   updateEditorValues();
+  updateContourControlState();
   initDemo();
   resetTrackedTotalEnergy();
   setMode('move');
