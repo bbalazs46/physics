@@ -366,6 +366,8 @@
     return fieldStrength * chargeProduct / (usesInverseDistanceRepulsion(chargeProduct) ? dist : distSq);
   }
 
+  // With the softened 1/r repulsion, the radial force is proportional to r / (r² + ε),
+  // so its matching potential is the negative logarithm of sqrt(r² + ε), not a +1/r term.
   function interactionPotentialEnergy(chargeProduct, dist) {
     return usesInverseDistanceRepulsion(chargeProduct)
       ? -fieldStrength * chargeProduct * Math.log(dist)
