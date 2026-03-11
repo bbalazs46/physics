@@ -204,8 +204,12 @@
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
-  const DEFAULT_TRAIL_LENGTH = 18;
-  const MAX_TRAIL_SEGMENT_ALPHA = 0.42;
+  const DEFAULT_TRAIL_LENGTH = 18; // Long enough to reveal motion without cluttering the field view.
+  const MAX_TRAIL_SEGMENT_ALPHA = 0.42; // Keep trails visible while leaving the field rendering readable underneath.
+  const TRAIL_POINT_EPSILON = 0.25;
+  const TRAIL_POINT_EPSILON_SQ = TRAIL_POINT_EPSILON * TRAIL_POINT_EPSILON;
+  const MIN_TRAIL_LINE_WIDTH = 1.2;
+  const TRAIL_LINE_WIDTH_FACTOR = 0.45;
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
   const DEFAULT_FIELD_LINE_FREQUENCY = 12;
@@ -328,7 +332,11 @@
     }
 
     const lastPoint = particle.trail[particle.trail.length - 1];
-    if (lastPoint && lastPoint.x === particle.x && lastPoint.y === particle.y) return;
+    if (lastPoint) {
+      const deltaX = lastPoint.x - particle.x;
+      const deltaY = lastPoint.y - particle.y;
+      if (deltaX * deltaX + deltaY * deltaY <= TRAIL_POINT_EPSILON_SQ) return;
+    }
 
     particle.trail.push({ x: particle.x, y: particle.y });
     trimParticleTrail(particle);
@@ -936,6 +944,7 @@
       if (!particle.trail || particle.trail.length < 2) continue;
 
       const color = particleColor(particle);
+      const baseTrailLineWidth = particle.r * TRAIL_LINE_WIDTH_FACTOR;
       ctx.save();
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -950,7 +959,7 @@
         ctx.lineTo(point.x, point.y);
         ctx.strokeStyle = color;
         ctx.globalAlpha = fade * MAX_TRAIL_SEGMENT_ALPHA;
-        ctx.lineWidth = Math.max(1.2, particle.r * 0.45 * fade);
+        ctx.lineWidth = Math.max(MIN_TRAIL_LINE_WIDTH, baseTrailLineWidth * fade);
         ctx.stroke();
       }
 
