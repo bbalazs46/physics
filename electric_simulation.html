@@ -100,6 +100,14 @@
 
     <div class="slider-row mt-8">
       <div class="slider-label">
+        <span>Fal töltésének nagysága</span>
+        <span id="wallChargeMagnitudeVal">0.08</span>
+      </div>
+      <input type="range" id="wallChargeMagnitudeInput" min="0.01" max="0.3" step="0.01" value="0.08" aria-label="Fal töltésének nagysága" />
+    </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
         <span>Potenciál felbontása</span>
         <span id="potentialResolutionVal">6</span>
       </div>
@@ -175,6 +183,8 @@
   const trailLengthVal = document.getElementById('trailLengthVal');
   const energyCorrectionInput = document.getElementById('energyCorrectionInput');
   const wallChargeInput = document.getElementById('wallChargeInput');
+  const wallChargeMagnitudeInput = document.getElementById('wallChargeMagnitudeInput');
+  const wallChargeMagnitudeVal = document.getElementById('wallChargeMagnitudeVal');
   const potentialResolutionInput = document.getElementById('potentialResolutionInput');
   const potentialResolutionVal = document.getElementById('potentialResolutionVal');
   const fieldLineFrequencyInput = document.getElementById('fieldLineFrequencyInput');
@@ -193,7 +203,6 @@
   const MIN_PARTICLE_MASS = 0.1;
   const WALL_BOUNCE_COEFFICIENT = 1.0;
   const WALL_CHARGE_SAMPLE_SPACING = 42; // Dense enough to look continuous along the border without making the field rendering too expensive.
-  const WALL_CHARGE_SAMPLE_CHARGE = 0.08;
   const ENERGY_CORRECTION_TOLERANCE = 1e-4; // Absolute total-energy delta that is treated as harmless floating-point noise.
   const DRAG_RELEASE_VELOCITY_SCALE = 0.45;
   const MAX_DRAG_RELEASE_SPEED = 18;
@@ -264,6 +273,7 @@
   let trailLength = DEFAULT_TRAIL_LENGTH;
   let energyCorrectionEnabled = false;
   let wallChargeEnabled = false;
+  let wallChargeMagnitude = 0.08;
   let potentialResolution = DEFAULT_POTENTIAL_GRID_RESOLUTION;
   let fieldLineFrequency = DEFAULT_FIELD_LINE_FREQUENCY;
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
@@ -297,14 +307,14 @@
 
     for (let index = 0; index < horizontalSegments; index++) {
       const x = (index + 0.5) * horizontalStep;
-      samples.push({ x, y: 0, charge: WALL_CHARGE_SAMPLE_CHARGE });
-      samples.push({ x, y: canvas.height, charge: WALL_CHARGE_SAMPLE_CHARGE });
+      samples.push({ x, y: 0, charge: wallChargeMagnitude });
+      samples.push({ x, y: canvas.height, charge: wallChargeMagnitude });
     }
 
     for (let index = 0; index < verticalSegments; index++) {
       const y = (index + 0.5) * verticalStep;
-      samples.push({ x: 0, y, charge: WALL_CHARGE_SAMPLE_CHARGE });
-      samples.push({ x: canvas.width, y, charge: WALL_CHARGE_SAMPLE_CHARGE });
+      samples.push({ x: 0, y, charge: wallChargeMagnitude });
+      samples.push({ x: canvas.width, y, charge: wallChargeMagnitude });
     }
 
     return samples;
@@ -312,7 +322,7 @@
 
   function getWallChargeSamples() {
     if (!wallChargeEnabled) return [];
-    const signature = `${canvas.width}x${canvas.height}`;
+    const signature = `${canvas.width}x${canvas.height}:${wallChargeMagnitude}`;
     if (cachedWallChargeSignature !== signature) {
       cachedWallChargeSignature = signature;
       cachedWallChargeSamples = buildWallChargeSamples();
@@ -384,6 +394,7 @@
     forceVal.textContent = Math.round(fieldStrength);
     dampingVal.textContent = damping.toFixed(3);
     trailLengthVal.textContent = Math.round(trailLength);
+    wallChargeMagnitudeVal.textContent = wallChargeMagnitude.toFixed(2);
     potentialResolutionVal.textContent = Math.round(potentialResolution);
     fieldLineFrequencyVal.textContent = Math.round(fieldLineFrequency);
     contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
@@ -608,6 +619,12 @@
 
   wallChargeInput.addEventListener('change', () => {
     wallChargeEnabled = wallChargeInput.checked;
+    resetTrackedTotalEnergy();
+  });
+
+  wallChargeMagnitudeInput.addEventListener('input', () => {
+    wallChargeMagnitude = parseFloat(wallChargeMagnitudeInput.value);
+    updateEditorValues();
     resetTrackedTotalEnergy();
   });
 
