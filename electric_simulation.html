@@ -82,6 +82,19 @@
 
     <div class="slider-row mt-8">
       <div class="slider-label">
+        <span>Nyomvonal hossza</span>
+        <span id="trailLengthVal">18</span>
+      </div>
+      <input type="range" id="trailLengthInput" min="0" max="60" step="1" value="18" />
+    </div>
+
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="energyCorrectionInput" checked />
+      <label for="energyCorrectionInput">Energiamegmaradás-korrekció</label>
+    </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
         <span>Potenciál felbontása</span>
         <span id="potentialResolutionVal">6</span>
       </div>
@@ -153,6 +166,9 @@
   const forceVal = document.getElementById('forceVal');
   const dampingInput = document.getElementById('dampingInput');
   const dampingVal = document.getElementById('dampingVal');
+  const trailLengthInput = document.getElementById('trailLengthInput');
+  const trailLengthVal = document.getElementById('trailLengthVal');
+  const energyCorrectionInput = document.getElementById('energyCorrectionInput');
   const potentialResolutionInput = document.getElementById('potentialResolutionInput');
   const potentialResolutionVal = document.getElementById('potentialResolutionVal');
   const fieldLineFrequencyInput = document.getElementById('fieldLineFrequencyInput');
@@ -188,6 +204,8 @@
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
+  const DEFAULT_TRAIL_LENGTH = 18;
+  const MAX_TRAIL_SEGMENT_ALPHA = 0.42;
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
   const DEFAULT_FIELD_LINE_FREQUENCY = 12;
@@ -229,6 +247,8 @@
   let damping = 0.992;
   let backgroundMode = 'potential';
   let colorScheme = 'forest';
+  let trailLength = DEFAULT_TRAIL_LENGTH;
+  let energyCorrectionEnabled = true;
   let potentialResolution = DEFAULT_POTENTIAL_GRID_RESOLUTION;
   let fieldLineFrequency = DEFAULT_FIELD_LINE_FREQUENCY;
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
@@ -271,7 +291,8 @@
       mass,
       charge,
       pinned: false,
-      r: radiusForMass(mass)
+      r: radiusForMass(mass),
+      trail: []
     };
     return particle;
   }
@@ -281,9 +302,42 @@
     chargeVal.textContent = formatCharge(nextParticleCharge);
     forceVal.textContent = Math.round(fieldStrength);
     dampingVal.textContent = damping.toFixed(3);
+    trailLengthVal.textContent = Math.round(trailLength);
     potentialResolutionVal.textContent = Math.round(potentialResolution);
     fieldLineFrequencyVal.textContent = Math.round(fieldLineFrequency);
     contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
+  }
+
+  function trimParticleTrail(particle) {
+    const maxTrailPoints = Math.max(0, Math.round(trailLength));
+    if (maxTrailPoints === 0) {
+      particle.trail.length = 0;
+      return;
+    }
+
+    while (particle.trail.length > maxTrailPoints) {
+      particle.trail.shift();
+    }
+  }
+
+  function recordParticleTrail(particle) {
+    if (!particle || !particle.trail) return;
+    if (trailLength <= 0) {
+      particle.trail.length = 0;
+      return;
+    }
+
+    const lastPoint = particle.trail[particle.trail.length - 1];
+    if (lastPoint && lastPoint.x === particle.x && lastPoint.y === particle.y) return;
+
+    particle.trail.push({ x: particle.x, y: particle.y });
+    trimParticleTrail(particle);
+  }
+
+  function trimAllParticleTrails() {
+    for (const particle of particles) {
+      trimParticleTrail(particle);
+    }
   }
 
   function getContourLevelFactors() {
@@ -449,6 +503,17 @@
     updateEditorValues();
   });
 
+  trailLengthInput.addEventListener('input', () => {
+    trailLength = parseInt(trailLengthInput.value, 10);
+    trimAllParticleTrails();
+    updateEditorValues();
+  });
+
+  energyCorrectionInput.addEventListener('change', () => {
+    energyCorrectionEnabled = energyCorrectionInput.checked;
+    resetTrackedTotalEnergy();
+  });
+
   potentialResolutionInput.addEventListener('input', () => {
     potentialResolution = parseFloat(potentialResolutionInput.value);
     updateEditorValues();
@@ -498,6 +563,7 @@
       const particle = makeParticle(x, y);
       particles.push(particle);
       setSelectedParticle(particle);
+      recordParticleTrail(particle);
       resetTrackedTotalEnergy();
       statusEl.textContent = `Új részecske hozzáadva: m=${particle.mass.toFixed(1)}, q=${formatCharge(particle.charge)}.`;
       return;
@@ -564,6 +630,7 @@
     dragged.y = nextY;
     dragged.vx = 0;
     dragged.vy = 0;
+    recordParticleTrail(dragged);
     resetTrackedTotalEnergy();
   }
 
@@ -656,7 +723,9 @@
     }
 
     // First keep the conservative Coulomb update energy-neutral, then apply damping so friction can still remove energy.
-    correctEnergyDrift(trackedTotalEnergy);
+    if (energyCorrectionEnabled) {
+      correctEnergyDrift(trackedTotalEnergy);
+    }
 
     for (const particle of particles) {
       if (particle.pinned || particle === dragged) continue;
@@ -681,6 +750,8 @@
         particle.y = canvas.height - particle.r;
         particle.vy *= -WALL_BOUNCE_COEFFICIENT;
       }
+
+      recordParticleTrail(particle);
     }
 
     trackedTotalEnergy = calculateTotalEnergy().total;
@@ -858,6 +929,35 @@
     }
   }
 
+  function drawTrails() {
+    if (trailLength <= 1) return;
+
+    for (const particle of particles) {
+      if (!particle.trail || particle.trail.length < 2) continue;
+
+      const color = particleColor(particle);
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      for (let index = 1; index < particle.trail.length; index++) {
+        const previousPoint = particle.trail[index - 1];
+        const point = particle.trail[index];
+        const fade = index / (particle.trail.length - 1);
+
+        ctx.beginPath();
+        ctx.moveTo(previousPoint.x, previousPoint.y);
+        ctx.lineTo(point.x, point.y);
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = fade * MAX_TRAIL_SEGMENT_ALPHA;
+        ctx.lineWidth = Math.max(1.2, particle.r * 0.45 * fade);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+
   function drawParticles() {
     for (const particle of particles) {
       const color = particleColor(particle);
@@ -919,6 +1019,7 @@
 
   function draw() {
     drawBackground();
+    drawTrails();
     drawParticles();
   }
 
@@ -940,6 +1041,9 @@
     negative.pinned = true;
 
     particles = [positive, negative, weakPositive];
+    for (const particle of particles) {
+      recordParticleTrail(particle);
+    }
     setSelectedParticle(weakPositive);
   }
 
