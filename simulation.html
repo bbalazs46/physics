@@ -152,7 +152,7 @@
   <div class="section">
     <h3>Labdák</h3>
     <div class="btn-group">
-      <button class="btn-neutral" id="btnMove">✋ Labdák mozgatása</button>
+      <button class="btn-neutral" id="btnMove" aria-label="Labdák mozgatása">✋ Labdák mozgatása</button>
       <button class="btn-add"    id="btnAdd">➕ Labda hozzáadása</button>
       <button class="btn-delete" id="btnDelete">🗑️ Labda törlése</button>
       <button class="btn-pin"    id="btnPin">📌 Labda rögzítése</button>
@@ -274,12 +274,27 @@
     mode = m;
     springFirst = null;
     [btnMove, btnAdd, btnDelete, btnPin, btnSpring].forEach(b => b.classList.remove('active'));
-    canvas.style.cursor = 'grab';
-    if (m === 'move') { btnMove.classList.add('active'); statusEl.textContent = 'Fogd meg és mozgasd a labdákat.'; }
-    else if (m === 'add') { btnAdd.classList.add('active'); canvas.style.cursor = 'crosshair'; statusEl.textContent = 'Kattints a vászonra labda hozzáadásához.'; }
-    else if (m === 'delete') { btnDelete.classList.add('active'); statusEl.textContent = 'Kattints egy labdára a törléséhez.'; }
-    else if (m === 'pin') { btnPin.classList.add('active');  statusEl.textContent = 'Kattints egy labdára a rögzítés/feloldáshoz.'; }
-    else if (m === 'spring') { btnSpring.classList.add('active'); statusEl.textContent = 'Kattints az első labdára a rugóhoz.'; }
+    if (m === 'move') {
+      btnMove.classList.add('active');
+      canvas.style.cursor = 'grab';
+      statusEl.textContent = 'Fogd meg és mozgasd a labdákat.';
+    } else if (m === 'add') {
+      btnAdd.classList.add('active');
+      canvas.style.cursor = 'crosshair';
+      statusEl.textContent = 'Kattints a vászonra labda hozzáadásához.';
+    } else if (m === 'delete') {
+      btnDelete.classList.add('active');
+      canvas.style.cursor = 'pointer';
+      statusEl.textContent = 'Kattints egy labdára a törléséhez.';
+    } else if (m === 'pin') {
+      btnPin.classList.add('active');
+      canvas.style.cursor = 'pointer';
+      statusEl.textContent = 'Kattints egy labdára a rögzítés/feloldáshoz.';
+    } else if (m === 'spring') {
+      btnSpring.classList.add('active');
+      canvas.style.cursor = 'pointer';
+      statusEl.textContent = 'Kattints az első labdára a rugóhoz.';
+    }
   }
 
   btnMove.addEventListener('click',   () => setMode('move'));
