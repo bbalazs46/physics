@@ -62,28 +62,38 @@
       cursor: pointer;
       font-size: 0.85rem;
       font-weight: 600;
-      transition: background 0.15s, transform 0.1s;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s, outline-color 0.15s;
     }
 
     button:active { transform: scale(0.97); }
 
-    .btn-add    { background: #4caf50; color: #fff; }
+    button.active {
+      transform: translateY(-1px) scale(1.03);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18), 0 0 18px var(--active-glow, rgba(255, 255, 255, 0.35));
+      outline: 3px solid var(--active-outline, #fff);
+      outline-offset: 1px;
+      filter: brightness(1.12);
+    }
+
+    .btn-add    { background: #4caf50; color: #fff; --active-outline: #c8e6c9; --active-glow: rgba(76, 175, 80, 0.7); }
     .btn-add:hover { background: #43a047; }
+    .btn-add.active { background: #2e7d32; }
 
-    .btn-delete { background: #e53935; color: #fff; }
+    .btn-delete { background: #e53935; color: #fff; --active-outline: #ff5252; --active-glow: rgba(229, 57, 53, 0.7); }
     .btn-delete:hover { background: #c62828; }
-    .btn-delete.active { background: #b71c1c; outline: 2px solid #ff5252; }
+    .btn-delete.active { background: #b71c1c; }
 
-    .btn-pin    { background: #fb8c00; color: #fff; }
+    .btn-pin    { background: #fb8c00; color: #fff; --active-outline: #ffab40; --active-glow: rgba(251, 140, 0, 0.75); }
     .btn-pin:hover { background: #e65100; }
-    .btn-pin.active { background: #bf360c; outline: 2px solid #ffab40; }
+    .btn-pin.active { background: #bf360c; }
 
-    .btn-spring { background: #7c4dff; color: #fff; }
+    .btn-spring { background: #7c4dff; color: #fff; --active-outline: #b388ff; --active-glow: rgba(124, 77, 255, 0.75); }
     .btn-spring:hover { background: #6200ea; }
-    .btn-spring.active { background: #4a148c; outline: 2px solid #b388ff; }
+    .btn-spring.active { background: #4a148c; }
 
-    .btn-neutral { background: #455a64; color: #fff; }
+    .btn-neutral { background: #455a64; color: #fff; --active-outline: #90caf9; --active-glow: rgba(144, 202, 249, 0.65); }
     .btn-neutral:hover { background: #37474f; }
+    .btn-neutral.active { background: #263238; }
 
     .toggle-btn {
       display: flex;
