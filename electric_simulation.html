@@ -80,10 +80,12 @@
       <input type="range" id="forceInput" min="20" max="1000" step="5" value="500" />
     </div>
 
+    <!--
     <div class="toggle-btn mt-8">
       <input type="checkbox" id="inverseRepulsionInput" />
       <label for="inverseRepulsionInput">Azonos töltések taszítása 1/r szerint</label>
     </div>
+    -->
 
     <div class="slider-row mt-8">
       <div class="slider-label">
@@ -205,7 +207,7 @@
   const forceVal = document.getElementById('forceVal');
   const potentialZeroOffsetInput = document.getElementById('potentialZeroOffsetInput');
   const potentialZeroOffsetVal = document.getElementById('potentialZeroOffsetVal');
-  const inverseRepulsionInput = document.getElementById('inverseRepulsionInput');
+  // const inverseRepulsionInput = document.getElementById('inverseRepulsionInput');
   const dampingInput = document.getElementById('dampingInput');
   const dampingVal = document.getElementById('dampingVal');
   const trailLengthInput = document.getElementById('trailLengthInput');
@@ -303,7 +305,7 @@
   let nextParticleMass = 2;
   let nextParticleCharge = 2;
   let fieldStrength = 500;
-  let inverseDistanceRepulsionEnabled = false;
+  // let inverseDistanceRepulsionEnabled = false;
   let damping = 1.0;
   let backgroundMode = 'equipotential';
   let colorScheme = 'forest';
@@ -375,30 +377,25 @@
     return cachedWallChargeSamples;
   }
 
-  function usesInverseDistanceRepulsion(chargeProduct) {
-    return inverseDistanceRepulsionEnabled && chargeProduct > 0;
-  }
+  // function usesInverseDistanceRepulsion(chargeProduct) {
+  //   return inverseDistanceRepulsionEnabled && chargeProduct > 0;
+  // }
 
   function interactionForceMagnitude(chargeProduct, distSq, dist) {
-    return fieldStrength * chargeProduct / (usesInverseDistanceRepulsion(chargeProduct) ? dist : distSq);
+    return fieldStrength * chargeProduct / distSq;
   }
 
-  // With the softened 1/r repulsion, the radial force is proportional to r / (r² + ε),
-  // so its matching potential is the negative logarithm of sqrt(r² + ε), not a +1/r term.
+  // With the 1/r repulsion path commented out, the simulation always uses the softened 1/r² interaction.
   function interactionPotentialEnergy(chargeProduct, dist) {
-    return usesInverseDistanceRepulsion(chargeProduct)
-      ? -fieldStrength * chargeProduct * Math.log(dist)
-      : fieldStrength * chargeProduct / dist;
+    return fieldStrength * chargeProduct / dist;
   }
 
   function positiveTestPotential(sourceCharge, dist) {
-    return inverseDistanceRepulsionEnabled && sourceCharge > 0
-      ? -fieldStrength * sourceCharge * Math.log(dist)
-      : fieldStrength * sourceCharge / dist;
+    return fieldStrength * sourceCharge / dist;
   }
 
   function positiveTestFieldScale(sourceCharge, distSq, dist) {
-    return fieldStrength * sourceCharge / (inverseDistanceRepulsionEnabled && sourceCharge > 0 ? distSq : distSq * dist);
+    return fieldStrength * sourceCharge / (distSq * dist);
   }
 
   function applyChargeAcceleration(targetParticle, sourceX, sourceY, sourceCharge, acceleration) {
@@ -480,15 +477,13 @@
   }
 
   function updateEnergyCorrectionAvailability() {
-    const energyCorrectionUnavailable = inverseDistanceRepulsionEnabled;
+    const energyCorrectionUnavailable = false;
     if (energyCorrectionUnavailable) {
       energyCorrectionEnabled = false;
       energyCorrectionInput.checked = false;
     }
-    energyCorrectionInput.disabled = energyCorrectionUnavailable;
-    energyCorrectionInput.title = energyCorrectionUnavailable
-      ? 'Az energiakorrekció a 1/r-es taszítással nem használható.'
-      : '';
+    energyCorrectionInput.disabled = false;
+    energyCorrectionInput.title = '';
   }
 
   function trimParticleTrail(particle) {
@@ -712,11 +707,11 @@
     resetTrackedTotalEnergy();
   });
 
-  inverseRepulsionInput.addEventListener('change', () => {
-    inverseDistanceRepulsionEnabled = inverseRepulsionInput.checked;
-    updateEnergyCorrectionAvailability();
-    resetTrackedTotalEnergy();
-  });
+  // inverseRepulsionInput.addEventListener('change', () => {
+  //   inverseDistanceRepulsionEnabled = inverseRepulsionInput.checked;
+  //   updateEnergyCorrectionAvailability();
+  //   resetTrackedTotalEnergy();
+  // });
 
   dampingInput.addEventListener('input', () => {
     damping = parseFloat(dampingInput.value);
