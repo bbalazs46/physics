@@ -103,7 +103,7 @@
         <span>Fal töltésének nagysága</span>
         <span id="wallChargeMagnitudeVal">0.08</span>
       </div>
-      <input type="range" id="wallChargeMagnitudeInput" min="0.01" max="0.3" step="0.01" value="0.08" />
+      <input type="range" id="wallChargeMagnitudeInput" min="0.01" max="0.3" step="0.01" value="0.08" aria-label="Fal töltésének nagysága" />
     </div>
 
     <div class="slider-row mt-8">
@@ -322,7 +322,7 @@
 
   function getWallChargeSamples() {
     if (!wallChargeEnabled) return [];
-    const signature = `${canvas.width}x${canvas.height}:${wallChargeMagnitude.toFixed(2)}`;
+    const signature = `${canvas.width}x${canvas.height}:${wallChargeMagnitude}`;
     if (cachedWallChargeSignature !== signature) {
       cachedWallChargeSignature = signature;
       cachedWallChargeSamples = buildWallChargeSamples();
