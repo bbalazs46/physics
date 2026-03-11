@@ -100,7 +100,7 @@
 
     <div class="toggle-btn mt-8">
       <input type="checkbox" id="wallChargeInput" />
-      <label for="wallChargeInput">A fal egyenletesen pozitív töltésű legyen</label>
+      <label for="wallChargeInput">A fal egyenletesen negatív töltésű legyen</label>
     </div>
 
     <div class="slider-row mt-8">
@@ -328,6 +328,7 @@
 
   function buildWallChargeSamples() {
     const samples = [];
+    const wallSampleCharge = -wallChargeMagnitude;
     const horizontalSegments = Math.max(2, Math.ceil(canvas.width / WALL_CHARGE_SAMPLE_SPACING));
     const verticalSegments = Math.max(2, Math.ceil(canvas.height / WALL_CHARGE_SAMPLE_SPACING));
     const horizontalStep = canvas.width / horizontalSegments;
@@ -335,14 +336,14 @@
 
     for (let index = 0; index < horizontalSegments; index++) {
       const x = (index + 0.5) * horizontalStep;
-      samples.push({ x, y: 0, charge: wallChargeMagnitude });
-      samples.push({ x, y: canvas.height, charge: wallChargeMagnitude });
+      samples.push({ x, y: 0, charge: wallSampleCharge });
+      samples.push({ x, y: canvas.height, charge: wallSampleCharge });
     }
 
     for (let index = 0; index < verticalSegments; index++) {
       const y = (index + 0.5) * verticalStep;
-      samples.push({ x: 0, y, charge: wallChargeMagnitude });
-      samples.push({ x: canvas.width, y, charge: wallChargeMagnitude });
+      samples.push({ x: 0, y, charge: wallSampleCharge });
+      samples.push({ x: canvas.width, y, charge: wallSampleCharge });
     }
 
     return samples;
