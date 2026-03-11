@@ -72,6 +72,11 @@
       <input type="range" id="forceInput" min="20" max="1000" step="5" value="500" />
     </div>
 
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="inverseRepulsionInput" />
+      <label for="inverseRepulsionInput">Azonos töltések taszítása 1/r szerint</label>
+    </div>
+
     <div class="slider-row mt-8">
       <div class="slider-label">
         <span>Csillapítás</span>
@@ -190,6 +195,7 @@
   const colorSchemeInput = document.getElementById('colorScheme');
   const forceInput = document.getElementById('forceInput');
   const forceVal = document.getElementById('forceVal');
+  const inverseRepulsionInput = document.getElementById('inverseRepulsionInput');
   const dampingInput = document.getElementById('dampingInput');
   const dampingVal = document.getElementById('dampingVal');
   const trailLengthInput = document.getElementById('trailLengthInput');
@@ -286,6 +292,7 @@
   let nextParticleMass = 2;
   let nextParticleCharge = 2;
   let fieldStrength = 500;
+  let inverseDistanceRepulsionEnabled = false;
   let damping = 1.0;
   let backgroundMode = 'equipotential';
   let colorScheme = 'forest';
@@ -356,7 +363,9 @@
     const deltaY = targetParticle.y - sourceY;
     const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
     const dist = Math.sqrt(distSq);
-    const rawForce = fieldStrength * targetParticle.charge * sourceCharge / distSq;
+    const chargeProduct = targetParticle.charge * sourceCharge;
+    const denominator = inverseDistanceRepulsionEnabled && chargeProduct > 0 ? dist : distSq;
+    const rawForce = fieldStrength * chargeProduct / denominator;
     const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
     const safeMass = Math.max(targetParticle.mass, MIN_PARTICLE_MASS);
     acceleration.x += (force * deltaX / dist) / safeMass;
@@ -425,6 +434,18 @@
   function updateContourControlState() {
     contourLineFrequencyInput.disabled = uniformContoursEnabled;
     uniformContourStepInput.disabled = !uniformContoursEnabled;
+  }
+
+  function updateEnergyCorrectionAvailability() {
+    const energyCorrectionUnavailable = inverseDistanceRepulsionEnabled;
+    if (energyCorrectionUnavailable) {
+      energyCorrectionEnabled = false;
+      energyCorrectionInput.checked = false;
+    }
+    energyCorrectionInput.disabled = energyCorrectionUnavailable;
+    energyCorrectionInput.title = energyCorrectionUnavailable
+      ? 'Az energiakorrekció a 1/r-es taszítással nem használható.'
+      : '';
   }
 
   function trimParticleTrail(particle) {
@@ -640,6 +661,12 @@
   forceInput.addEventListener('input', () => {
     fieldStrength = parseFloat(forceInput.value);
     updateEditorValues();
+    resetTrackedTotalEnergy();
+  });
+
+  inverseRepulsionInput.addEventListener('change', () => {
+    inverseDistanceRepulsionEnabled = inverseRepulsionInput.checked;
+    updateEnergyCorrectionAvailability();
     resetTrackedTotalEnergy();
   });
 
@@ -1242,6 +1269,7 @@
 
   updateEditorValues();
   updateContourControlState();
+  updateEnergyCorrectionAvailability();
   initDemo();
   resetTrackedTotalEnergy();
   setMode('move');
