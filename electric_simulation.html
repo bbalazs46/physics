@@ -72,6 +72,11 @@
       <input type="range" id="potentialZeroOffsetInput" min="-0.9" max="0.9" step="0.01" value="0" aria-label="Nullapotenciál helye" />
     </div>
 
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="autoPotentialZeroInput" aria-label="Nullapotenciál automatikus középre igazítása a képernyő átlaga alapján" />
+      <label for="autoPotentialZeroInput">Nullapotenciál automatikus középre igazítása a képernyő átlaga alapján</label>
+    </div>
+
     <div class="slider-row mt-10">
       <div class="slider-label">
         <span>Coulomb-erő</span>
@@ -181,10 +186,13 @@
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
   const container = document.getElementById('canvas-container');
+  let cachedAutoPotentialZeroReference = 0;
+  let cachedAutoPotentialZeroTimestamp = -Infinity;
 
   function resize() {
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
+    cachedAutoPotentialZeroTimestamp = -Infinity;
   }
 
   resize();
@@ -207,6 +215,7 @@
   const forceVal = document.getElementById('forceVal');
   const potentialZeroOffsetInput = document.getElementById('potentialZeroOffsetInput');
   const potentialZeroOffsetVal = document.getElementById('potentialZeroOffsetVal');
+  const autoPotentialZeroInput = document.getElementById('autoPotentialZeroInput');
   // const inverseRepulsionInput = document.getElementById('inverseRepulsionInput');
   const dampingInput = document.getElementById('dampingInput');
   const dampingVal = document.getElementById('dampingVal');
@@ -266,6 +275,7 @@
   const TRAIL_LINE_WIDTH_FACTOR = 0.45;
   const POTENTIAL_HUE_TRANSITION_RATIO = 0.14;
   const DEFAULT_POTENTIAL_ZERO_OFFSET_RATIO = 0;
+  const AUTO_POTENTIAL_ZERO_REFRESH_MS = 50;
   const MIN_POTENTIAL_TRANSITION_RANGE = 1;
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
@@ -310,6 +320,7 @@
   let backgroundMode = 'equipotential';
   let colorScheme = 'forest';
   let potentialZeroOffsetRatio = DEFAULT_POTENTIAL_ZERO_OFFSET_RATIO;
+  let autoPotentialZeroEnabled = false;
   let trailLength = DEFAULT_TRAIL_LENGTH;
   let energyCorrectionEnabled = false;
   let wallChargeEnabled = false;
@@ -340,8 +351,42 @@
     return POTENTIAL_COLOR_SCHEMES[colorScheme] || POTENTIAL_COLOR_SCHEMES.forest;
   }
 
-  function getPotentialZeroReference(maxMagnitude) {
+  function getAverageScreenPotential() {
+    let totalPotential = 0;
+    let sampleCount = 0;
+
+    for (let x = potentialResolution / 2; x < canvas.width; x += potentialResolution) {
+      for (let y = potentialResolution / 2; y < canvas.height; y += potentialResolution) {
+        totalPotential += potentialAt(x, y);
+        sampleCount++;
+      }
+    }
+
+    return sampleCount > 0 ? totalPotential / sampleCount : 0;
+  }
+
+  function getAutoPotentialZeroReference() {
+    const now = performance.now();
+    if (now - cachedAutoPotentialZeroTimestamp >= AUTO_POTENTIAL_ZERO_REFRESH_MS) {
+      cachedAutoPotentialZeroReference = getAverageScreenPotential();
+      cachedAutoPotentialZeroTimestamp = now;
+    }
+    return cachedAutoPotentialZeroReference;
+  }
+
+  function getManualPotentialZeroReference(maxMagnitude) {
     return potentialZeroOffsetRatio * (maxMagnitude || 1);
+  }
+
+  function getPotentialZeroReference(maxMagnitude, autoZeroReference) {
+    if (typeof autoZeroReference === 'number') return autoZeroReference;
+    return getManualPotentialZeroReference(maxMagnitude);
+  }
+
+  function backgroundModeUsesPotentialZeroReference() {
+    return backgroundMode === 'potential'
+      || backgroundMode === 'equipotential'
+      || backgroundMode === 'potential-equipotential';
   }
 
   function buildWallChargeSamples() {
@@ -475,7 +520,8 @@
     massVal.textContent = nextParticleMass.toFixed(1);
     chargeVal.textContent = formatCharge(nextParticleCharge);
     forceVal.textContent = Math.round(fieldStrength);
-    potentialZeroOffsetVal.textContent = `${Math.round(potentialZeroOffsetRatio * 100)}%`;
+    potentialZeroOffsetVal.textContent = autoPotentialZeroEnabled ? 'Auto' : `${Math.round(potentialZeroOffsetRatio * 100)}%`;
+    potentialZeroOffsetInput.disabled = autoPotentialZeroEnabled;
     dampingVal.textContent = damping.toFixed(3);
     trailLengthVal.textContent = Math.round(trailLength);
     wallChargeMagnitudeVal.textContent = wallChargeMagnitude.toFixed(2);
@@ -702,6 +748,11 @@
 
   potentialZeroOffsetInput.addEventListener('input', () => {
     potentialZeroOffsetRatio = parseFloat(potentialZeroOffsetInput.value);
+    updateEditorValues();
+  });
+
+  autoPotentialZeroInput.addEventListener('change', () => {
+    autoPotentialZeroEnabled = autoPotentialZeroInput.checked;
     updateEditorValues();
   });
 
@@ -1002,7 +1053,7 @@
     trackedTotalEnergy = calculateTotalEnergy().total;
   }
 
-  function drawPotentialMap() {
+  function drawPotentialMap(autoZeroReference = undefined) {
     const samples = [];
     let maxMagnitude = 0;
     const scheme = getPotentialColorScheme();
@@ -1015,7 +1066,7 @@
       }
     }
 
-    const zeroReference = getPotentialZeroReference(maxMagnitude);
+    const zeroReference = getPotentialZeroReference(maxMagnitude, autoZeroReference);
     let maxAdjustedMagnitude = 0;
     for (const sample of samples) {
       sample.adjustedPotential = sample.potential - zeroReference;
@@ -1048,7 +1099,7 @@
     };
   }
 
-  function drawEquipotentialLines() {
+  function drawEquipotentialLines(autoZeroReference = undefined) {
     const cols = Math.ceil(canvas.width / potentialResolution);
     const rows = Math.ceil(canvas.height / potentialResolution);
     const field = Array.from({ length: cols + 1 }, () => Array(rows + 1).fill(0));
@@ -1063,7 +1114,7 @@
       }
     }
 
-    const zeroReference = getPotentialZeroReference(maxAbs);
+    const zeroReference = getPotentialZeroReference(maxAbs, autoZeroReference);
     maxAbs = 0;
     for (let ix = 0; ix <= cols; ix++) {
       for (let iy = 0; iy <= rows; iy++) {
@@ -1184,13 +1235,17 @@
 
     if (particles.length === 0 && !wallChargeEnabled) return;
 
+    const autoZeroReference = autoPotentialZeroEnabled && backgroundModeUsesPotentialZeroReference()
+      ? getAutoPotentialZeroReference()
+      : undefined;
+
     if (backgroundMode === 'potential') {
-      drawPotentialMap();
+      drawPotentialMap(autoZeroReference);
     } else if (backgroundMode === 'equipotential') {
-      drawEquipotentialLines();
+      drawEquipotentialLines(autoZeroReference);
     } else if (backgroundMode === 'potential-equipotential') {
-      drawPotentialMap();
-      drawEquipotentialLines();
+      drawPotentialMap(autoZeroReference);
+      drawEquipotentialLines(autoZeroReference);
     } else {
       drawFieldLines();
     }
