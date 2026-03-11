@@ -172,6 +172,9 @@
   const DRAG_RELEASE_VELOCITY_SCALE = 0.45;
   const MAX_DRAG_RELEASE_SPEED = 18;
   const DRAG_RELEASE_STALE_MS = 140;
+  const DRAG_VELOCITY_REFERENCE_FPS = 60;
+  const DRAG_VELOCITY_FRAME_MS = 1000 / DRAG_VELOCITY_REFERENCE_FPS;
+  const DRAG_VELOCITY_SMOOTHING_FACTOR = 0.65;
   const FIELD_LINE_SEED_OFFSET = 6;
   const FIELD_ARROW_HALF_LENGTH = 6;
   const POTENTIAL_MAP_LIGHTNESS_MIN = 12;
@@ -419,6 +422,10 @@
     return null;
   }
 
+  function smoothDragVelocity(previousVelocity, currentVelocity) {
+    return previousVelocity * (1 - DRAG_VELOCITY_SMOOTHING_FACTOR) + currentVelocity * DRAG_VELOCITY_SMOOTHING_FACTOR;
+  }
+
   function onPointerDown(event) {
     event.preventDefault();
     const { x, y } = getPos(event);
@@ -476,12 +483,14 @@
     const nextX = x + dragOffX;
     const nextY = y + dragOffY;
     const now = performance.now();
-    const deltaTime = Math.max(now - dragLastMoveTime, 1);
-    const instantVelocityX = ((nextX - dragged.x) / deltaTime) * (1000 / 60);
-    const instantVelocityY = ((nextY - dragged.y) / deltaTime) * (1000 / 60);
+    const deltaTime = now - dragLastMoveTime;
+    if (deltaTime > 0) {
+      const instantVelocityX = ((nextX - dragged.x) / deltaTime) * DRAG_VELOCITY_FRAME_MS;
+      const instantVelocityY = ((nextY - dragged.y) / deltaTime) * DRAG_VELOCITY_FRAME_MS;
 
-    dragVelocityX = dragVelocityX * 0.35 + instantVelocityX * 0.65;
-    dragVelocityY = dragVelocityY * 0.35 + instantVelocityY * 0.65;
+      dragVelocityX = smoothDragVelocity(dragVelocityX, instantVelocityX);
+      dragVelocityY = smoothDragVelocity(dragVelocityY, instantVelocityY);
+    }
     dragLastMoveTime = now;
 
     dragged.x = nextX;
@@ -491,7 +500,8 @@
   }
 
   function onPointerUp() {
-    if (dragged && !dragged.pinned && performance.now() - dragLastMoveTime <= DRAG_RELEASE_STALE_MS) {
+    const timeSinceLastMove = performance.now() - dragLastMoveTime;
+    if (dragged && !dragged.pinned && timeSinceLastMove <= DRAG_RELEASE_STALE_MS) {
       let releaseVelocityX = dragVelocityX * DRAG_RELEASE_VELOCITY_SCALE;
       let releaseVelocityY = dragVelocityY * DRAG_RELEASE_VELOCITY_SCALE;
       const releaseSpeed = Math.hypot(releaseVelocityX, releaseVelocityY);
