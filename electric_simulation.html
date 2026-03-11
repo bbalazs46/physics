@@ -125,7 +125,7 @@
     <div class="slider-row mt-8">
       <div class="slider-label">
         <span>Szintvonalak gyakorisága</span>
-        <span id="contourLineFrequencyVal">12</span>
+        <span id="contourLineFrequencyVal">10</span>
       </div>
       <input type="range" id="contourLineFrequencyInput" min="1" max="24" step="1" value="10" />
     </div>
@@ -237,6 +237,8 @@
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
   const DEFAULT_UNIFORM_CONTOUR_STEP = 5;
+  const MIN_CONTOUR_LEVEL_THRESHOLD = 0.01;
+  const MIN_UNIFORM_CONTOUR_STEP = 1;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
   const DEFAULT_TRAIL_LENGTH = 200; // Long enough to reveal motion without cluttering the field view.
   const MAX_TRAIL_SEGMENT_ALPHA = 0.42; // Keep trails visible while leaving the field rendering readable underneath.
@@ -472,16 +474,16 @@
   function getContourLevels(maxAbs) {
     if (uniformContoursEnabled) {
       const positiveLevels = [];
-      const step = Math.max(0.01, uniformContourStep);
-      for (let level = step; level <= maxAbs + INTERPOLATION_EPSILON; level += step) {
-        positiveLevels.push(level);
+      const step = Math.max(MIN_UNIFORM_CONTOUR_STEP, uniformContourStep);
+      for (let index = 1; index * step <= maxAbs + INTERPOLATION_EPSILON; index++) {
+        positiveLevels.push(index * step);
       }
       return positiveLevels.map(level => -level).reverse().concat(positiveLevels);
     }
 
     return getContourLevelFactors()
       .map(factor => factor * (maxAbs || 1))
-      .filter(level => Math.abs(level) > 0.01);
+      .filter(level => Math.abs(level) > MIN_CONTOUR_LEVEL_THRESHOLD);
   }
 
   function syncControlsToSelectedParticle() {
