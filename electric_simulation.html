@@ -169,6 +169,9 @@
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
   const WALL_BOUNCE_COEFFICIENT = 0.7;
+  const DRAG_RELEASE_VELOCITY_SCALE = 0.45;
+  const MAX_DRAG_RELEASE_SPEED = 18;
+  const DRAG_RELEASE_STALE_MS = 140;
   const FIELD_LINE_SEED_OFFSET = 6;
   const FIELD_ARROW_HALF_LENGTH = 6;
   const POTENTIAL_MAP_LIGHTNESS_MIN = 12;
@@ -209,6 +212,9 @@
   let selectedParticle = null;
   let dragOffX = 0;
   let dragOffY = 0;
+  let dragVelocityX = 0;
+  let dragVelocityY = 0;
+  let dragLastMoveTime = 0;
   let nextParticleMass = 2;
   let nextParticleCharge = 2;
   let fieldStrength = 140;
@@ -338,6 +344,9 @@
     particles = [];
     dragged = null;
     selectedParticle = null;
+    dragVelocityX = 0;
+    dragVelocityY = 0;
+    dragLastMoveTime = 0;
     paused = false;
     btnPause.textContent = '⏸️ Szünet';
     initDemo();
@@ -451,6 +460,11 @@
       dragged = hit;
       dragOffX = hit.x - x;
       dragOffY = hit.y - y;
+      hit.vx = 0;
+      hit.vy = 0;
+      dragVelocityX = 0;
+      dragVelocityY = 0;
+      dragLastMoveTime = performance.now();
       canvas.style.cursor = 'grabbing';
     }
   }
@@ -459,14 +473,43 @@
     event.preventDefault();
     if (!dragged) return;
     const { x, y } = getPos(event);
-    dragged.x = x + dragOffX;
-    dragged.y = y + dragOffY;
+    const nextX = x + dragOffX;
+    const nextY = y + dragOffY;
+    const now = performance.now();
+    const deltaTime = Math.max(now - dragLastMoveTime, 1);
+    const instantVelocityX = ((nextX - dragged.x) / deltaTime) * (1000 / 60);
+    const instantVelocityY = ((nextY - dragged.y) / deltaTime) * (1000 / 60);
+
+    dragVelocityX = dragVelocityX * 0.35 + instantVelocityX * 0.65;
+    dragVelocityY = dragVelocityY * 0.35 + instantVelocityY * 0.65;
+    dragLastMoveTime = now;
+
+    dragged.x = nextX;
+    dragged.y = nextY;
     dragged.vx = 0;
     dragged.vy = 0;
   }
 
   function onPointerUp() {
+    if (dragged && !dragged.pinned && performance.now() - dragLastMoveTime <= DRAG_RELEASE_STALE_MS) {
+      let releaseVelocityX = dragVelocityX * DRAG_RELEASE_VELOCITY_SCALE;
+      let releaseVelocityY = dragVelocityY * DRAG_RELEASE_VELOCITY_SCALE;
+      const releaseSpeed = Math.hypot(releaseVelocityX, releaseVelocityY);
+
+      if (releaseSpeed > MAX_DRAG_RELEASE_SPEED) {
+        const clampFactor = MAX_DRAG_RELEASE_SPEED / releaseSpeed;
+        releaseVelocityX *= clampFactor;
+        releaseVelocityY *= clampFactor;
+      }
+
+      dragged.vx = releaseVelocityX;
+      dragged.vy = releaseVelocityY;
+    }
+
     dragged = null;
+    dragVelocityX = 0;
+    dragVelocityY = 0;
+    dragLastMoveTime = 0;
     if (mode === 'move') canvas.style.cursor = 'grab';
   }
 
