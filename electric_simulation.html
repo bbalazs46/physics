@@ -170,6 +170,7 @@
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
   const WALL_BOUNCE_COEFFICIENT = 0.7;
+  const ENERGY_CORRECTION_TOLERANCE = 1e-4; // Absolute total-energy delta that is treated as harmless floating-point noise.
   const DRAG_RELEASE_VELOCITY_SCALE = 0.45;
   const MAX_DRAG_RELEASE_SPEED = 18;
   const DRAG_RELEASE_STALE_MS = 140;
@@ -232,6 +233,7 @@
   let fieldLineFrequency = DEFAULT_FIELD_LINE_FREQUENCY;
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
   let nextParticleId = 1;
+  let trackedTotalEnergy = null;
 
   function radiusForMass(mass) {
     return 9 + Math.sqrt(mass) * 4;
@@ -314,6 +316,61 @@
     selectedParticle.mass = nextParticleMass;
     selectedParticle.charge = nextParticleCharge;
     updateParticleAppearance(selectedParticle);
+    resetTrackedTotalEnergy();
+  }
+
+  function calculateTotalEnergy() {
+    let kineticEnergy = 0;
+    let potentialEnergy = 0;
+
+    for (let i = 0; i < particles.length; i++) {
+      const particle = particles[i];
+      kineticEnergy += 0.5 * Math.max(particle.mass, MIN_PARTICLE_MASS) * (particle.vx * particle.vx + particle.vy * particle.vy);
+
+      for (let j = i + 1; j < particles.length; j++) {
+        const otherParticle = particles[j];
+        const deltaX = particle.x - otherParticle.x;
+        const deltaY = particle.y - otherParticle.y;
+        const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY + EPSILON);
+        potentialEnergy += fieldStrength * particle.charge * otherParticle.charge / dist;
+      }
+    }
+
+    return {
+      kinetic: kineticEnergy,
+      potential: potentialEnergy,
+      total: kineticEnergy + potentialEnergy
+    };
+  }
+
+  function resetTrackedTotalEnergy() {
+    trackedTotalEnergy = calculateTotalEnergy().total;
+  }
+
+  function correctEnergyDrift(targetTotalEnergy) {
+    const currentEnergy = calculateTotalEnergy();
+    const drift = currentEnergy.total - targetTotalEnergy;
+    if (!Number.isFinite(drift) || Math.abs(drift) <= ENERGY_CORRECTION_TOLERANCE) return;
+
+    const targetKineticEnergy = Math.max(0, targetTotalEnergy - currentEnergy.potential);
+    if (!Number.isFinite(targetKineticEnergy)) return;
+
+    let adjustableKineticEnergy = 0;
+    for (const particle of particles) {
+      if (particle.pinned || particle === dragged) continue;
+      adjustableKineticEnergy += 0.5 * Math.max(particle.mass, MIN_PARTICLE_MASS) * (particle.vx * particle.vx + particle.vy * particle.vy);
+    }
+
+    if (adjustableKineticEnergy <= 0) return;
+
+    const velocityScale = Math.sqrt(targetKineticEnergy / adjustableKineticEnergy);
+    if (!Number.isFinite(velocityScale)) return;
+
+    for (const particle of particles) {
+      if (particle.pinned || particle === dragged) continue;
+      particle.vx *= velocityScale;
+      particle.vy *= velocityScale;
+    }
   }
 
   function setMode(nextMode) {
@@ -357,6 +414,7 @@
     paused = false;
     btnPause.textContent = '⏸️ Szünet';
     initDemo();
+    resetTrackedTotalEnergy();
     setMode('move');
   });
 
@@ -383,6 +441,7 @@
   forceInput.addEventListener('input', () => {
     fieldStrength = parseFloat(forceInput.value);
     updateEditorValues();
+    resetTrackedTotalEnergy();
   });
 
   dampingInput.addEventListener('input', () => {
@@ -439,6 +498,7 @@
       const particle = makeParticle(x, y);
       particles.push(particle);
       setSelectedParticle(particle);
+      resetTrackedTotalEnergy();
       statusEl.textContent = `Új részecske hozzáadva: m=${particle.mass.toFixed(1)}, q=${formatCharge(particle.charge)}.`;
       return;
     }
@@ -448,6 +508,7 @@
       if (selectedParticle === hit) {
         selectedParticle = null;
       }
+      resetTrackedTotalEnergy();
       statusEl.textContent = 'Részecske törölve.';
       return;
     }
@@ -459,6 +520,7 @@
         hit.vy = 0;
       }
       setSelectedParticle(hit);
+      resetTrackedTotalEnergy();
       statusEl.textContent = hit.pinned ? 'Részecske rögzítve.' : 'Részecske feloldva.';
       return;
     }
@@ -476,6 +538,7 @@
       dragVelocityX = 0;
       dragVelocityY = 0;
       dragLastMoveTime = performance.now();
+      resetTrackedTotalEnergy();
       canvas.style.cursor = 'grabbing';
     }
   }
@@ -501,6 +564,7 @@
     dragged.y = nextY;
     dragged.vx = 0;
     dragged.vy = 0;
+    resetTrackedTotalEnergy();
   }
 
   function onPointerUp() {
@@ -524,6 +588,7 @@
     dragVelocityX = 0;
     dragVelocityY = 0;
     dragLastMoveTime = 0;
+    resetTrackedTotalEnergy();
     if (mode === 'move') canvas.style.cursor = 'grab';
   }
 
@@ -563,6 +628,9 @@
 
   function step() {
     if (paused) return;
+    if (trackedTotalEnergy === null) {
+      resetTrackedTotalEnergy();
+    }
 
     for (let i = 0; i < particles.length; i++) {
       const currentParticle = particles[i];
@@ -583,12 +651,17 @@
         accelerationY += (force * deltaY / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
       }
 
-      currentParticle.vx = (currentParticle.vx + accelerationX) * damping;
-      currentParticle.vy = (currentParticle.vy + accelerationY) * damping;
+      currentParticle.vx += accelerationX;
+      currentParticle.vy += accelerationY;
     }
+
+    // First keep the conservative Coulomb update energy-neutral, then apply damping so friction can still remove energy.
+    correctEnergyDrift(trackedTotalEnergy);
 
     for (const particle of particles) {
       if (particle.pinned || particle === dragged) continue;
+      particle.vx *= damping;
+      particle.vy *= damping;
       particle.x += particle.vx;
       particle.y += particle.vy;
 
@@ -609,6 +682,8 @@
         particle.vy *= -WALL_BOUNCE_COEFFICIENT;
       }
     }
+
+    trackedTotalEnergy = calculateTotalEnergy().total;
   }
 
   function drawPotentialMap() {
@@ -870,6 +945,7 @@
 
   updateEditorValues();
   initDemo();
+  resetTrackedTotalEnergy();
   setMode('move');
   loop();
 </script>
