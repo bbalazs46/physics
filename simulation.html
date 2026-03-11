@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rugó-Labda Szimuláció</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    #controls {
+      width: 260px;
+      min-width: 260px;
+      background: #16213e;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      border-right: 2px solid #0f3460;
+    }
+
+    #controls h2 {
+      color: #e94560;
+      font-size: 1.1rem;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
+    .section {
+      background: #0f3460;
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .section h3 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #a0c4ff;
+      margin-bottom: 8px;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    button {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button:active { transform: scale(0.97); }
+
+    .btn-add    { background: #4caf50; color: #fff; }
+    .btn-add:hover { background: #43a047; }
+
+    .btn-delete { background: #e53935; color: #fff; }
+    .btn-delete:hover { background: #c62828; }
+    .btn-delete.active { background: #b71c1c; outline: 2px solid #ff5252; }
+
+    .btn-pin    { background: #fb8c00; color: #fff; }
+    .btn-pin:hover { background: #e65100; }
+    .btn-pin.active { background: #bf360c; outline: 2px solid #ffab40; }
+
+    .btn-spring { background: #7c4dff; color: #fff; }
+    .btn-spring:hover { background: #6200ea; }
+    .btn-spring.active { background: #4a148c; outline: 2px solid #b388ff; }
+
+    .btn-neutral { background: #455a64; color: #fff; }
+    .btn-neutral:hover { background: #37474f; }
+
+    .toggle-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .toggle-btn input[type=checkbox] {
+      width: 16px; height: 16px; cursor: pointer;
+    }
+
+    label { font-size: 0.85rem; }
+
+    .slider-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .slider-row .slider-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #e94560;
+      cursor: pointer;
+    }
+
+    #status {
+      font-size: 0.78rem;
+      color: #a0c4ff;
+      min-height: 32px;
+      background: #0a1128;
+      border-radius: 6px;
+      padding: 6px 8px;
+      line-height: 1.4;
+    }
+
+    #hint {
+      font-size: 0.75rem;
+      color: #7986cb;
+      text-align: center;
+    }
+
+    #canvas-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      background: #0d1b2a;
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body>
+
+<div id="controls">
+  <h2>⚙️ Szimuláció</h2>
+
+  <div class="section">
+    <h3>Labdák</h3>
+    <div class="btn-group">
+      <button class="btn-add"    id="btnAdd">➕ Labda hozzáadása</button>
+      <button class="btn-delete" id="btnDelete">🗑️ Labda törlése</button>
+      <button class="btn-pin"    id="btnPin">📌 Labda rögzítése</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Rugók</h3>
+    <div class="btn-group">
+      <button class="btn-spring"  id="btnSpring">🔗 Rugó hozzáadása</button>
+      <button class="btn-neutral" id="btnClear">🧹 Összes rugó törlése</button>
+    </div>
+    <div class="slider-row" style="margin-top:10px">
+      <div class="slider-label">
+        <span>Rugó erőssége</span>
+        <span id="springKVal">0.05</span>
+      </div>
+      <input type="range" id="springK" min="0.001" max="0.3" step="0.001" value="0.05" />
+    </div>
+    <div class="slider-row" style="margin-top:8px">
+      <div class="slider-label">
+        <span>Csillapítás</span>
+        <span id="dampingVal">0.98</span>
+      </div>
+      <input type="range" id="damping" min="0.8" max="0.999" step="0.001" value="0.98" />
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Gravitáció</h3>
+    <div class="toggle-btn">
+      <input type="checkbox" id="gravityOn" checked />
+      <label for="gravityOn">Gravitáció bekapcsolva</label>
+    </div>
+    <div class="slider-row" style="margin-top:8px">
+      <div class="slider-label">
+        <span>Erőssége</span>
+        <span id="gravVal">0.3</span>
+      </div>
+      <input type="range" id="gravStrength" min="0" max="2" step="0.01" value="0.3" />
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Szimuláció</h3>
+    <div class="btn-group">
+      <button class="btn-neutral" id="btnPause">⏸️ Szünet</button>
+      <button class="btn-neutral" id="btnReset">🔄 Reset</button>
+    </div>
+  </div>
+
+  <div id="status">Kattints a vászonra labda hozzáadásához.</div>
+  <p id="hint">Vonszold a labdákat az egérrel!</p>
+</div>
+
+<div id="canvas-container">
+  <canvas id="canvas"></canvas>
+</div>
+
+<script>
+  // ─── Canvas setup ────────────────────────────────────────────────────────────
+  const canvas = document.getElementById('canvas');
+  const ctx    = canvas.getContext('2d');
+  const container = document.getElementById('canvas-container');
+
+  function resize() {
+    canvas.width  = container.clientWidth;
+    canvas.height = container.clientHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ─── State ───────────────────────────────────────────────────────────────────
+  let balls   = [];
+  let springs = [];
+  let paused  = false;
+  let mode    = 'add'; // 'add' | 'delete' | 'pin' | 'spring'
+  let springFirst = null; // first ball selected when adding a spring
+
+  // Physics params (read from sliders)
+  let springK  = 0.05;
+  let damping  = 0.98;
+  let gravity  = 0.3;
+  let gravityOn = true;
+
+  // Drag state
+  let dragged   = null;
+  let dragOffX  = 0;
+  let dragOffY  = 0;
+
+  // ─── UI helpers ──────────────────────────────────────────────────────────────
+  const statusEl    = document.getElementById('status');
+  const btnAdd      = document.getElementById('btnAdd');
+  const btnDelete   = document.getElementById('btnDelete');
+  const btnPin      = document.getElementById('btnPin');
+  const btnSpring   = document.getElementById('btnSpring');
+  const btnClear    = document.getElementById('btnClear');
+  const btnPause    = document.getElementById('btnPause');
+  const btnReset    = document.getElementById('btnReset');
+  const springKIn   = document.getElementById('springK');
+  const dampingIn   = document.getElementById('damping');
+  const gravIn      = document.getElementById('gravStrength');
+  const gravOnIn    = document.getElementById('gravityOn');
+
+  function setMode(m) {
+    mode = m;
+    springFirst = null;
+    [btnDelete, btnPin, btnSpring].forEach(b => b.classList.remove('active'));
+    if (m === 'delete') { btnDelete.classList.add('active'); statusEl.textContent = 'Kattints egy labdára a törléséhez.'; }
+    else if (m === 'pin') { btnPin.classList.add('active');  statusEl.textContent = 'Kattints egy labdára a rögzítés/feloldáshoz.'; }
+    else if (m === 'spring') { btnSpring.classList.add('active'); statusEl.textContent = 'Kattints az első labdára a rugóhoz.'; }
+    else { statusEl.textContent = 'Kattints a vászonra labda hozzáadásához.'; }
+  }
+
+  btnAdd.addEventListener('click',    () => setMode('add'));
+  btnDelete.addEventListener('click', () => setMode(mode === 'delete' ? 'add' : 'delete'));
+  btnPin.addEventListener('click',    () => setMode(mode === 'pin'    ? 'add' : 'pin'));
+  btnSpring.addEventListener('click', () => setMode(mode === 'spring' ? 'add' : 'spring'));
+
+  btnClear.addEventListener('click', () => { springs = []; });
+
+  btnPause.addEventListener('click', () => {
+    paused = !paused;
+    btnPause.textContent = paused ? '▶️ Folytatás' : '⏸️ Szünet';
+  });
+
+  btnReset.addEventListener('click', () => {
+    balls = []; springs = []; springFirst = null; setMode('add');
+  });
+
+  springKIn.addEventListener('input', () => {
+    springK = parseFloat(springKIn.value);
+    document.getElementById('springKVal').textContent = springK.toFixed(3);
+  });
+
+  dampingIn.addEventListener('input', () => {
+    damping = parseFloat(dampingIn.value);
+    document.getElementById('dampingVal').textContent = damping.toFixed(3);
+  });
+
+  gravIn.addEventListener('input', () => {
+    gravity = parseFloat(gravIn.value);
+    document.getElementById('gravVal').textContent = gravity.toFixed(2);
+  });
+
+  gravOnIn.addEventListener('change', () => { gravityOn = gravOnIn.checked; });
+
+  // ─── Constants ────────────────────────────────────────────────────────────────
+  const BALL_COLORS = ['#e94560','#4fc3f7','#81c784','#ffb74d','#ce93d8','#80cbc4','#fff176'];
+  const DEFAULT_SPRING_REST_LENGTH = 80;
+  const EPSILON = 0.001; // prevent division by zero
+
+  let colorIdx = 0;
+
+  // ─── Ball factory ─────────────────────────────────────────────────────────────
+  function makeBall(x, y) {
+    const b = {
+      x, y,
+      vx: 0, vy: 0,
+      r: 14,
+      pinned: false,
+      color: BALL_COLORS[colorIdx % BALL_COLORS.length],
+      id: Date.now() + Math.random()
+    };
+    colorIdx++;
+    return b;
+  }
+
+  // ─── Spring helpers ───────────────────────────────────────────────────────────
+  function springExists(a, b) {
+    return springs.some(s =>
+      (s.a === a && s.b === b) || (s.a === b && s.b === a)
+    );
+  }
+
+  function addSpring(a, b) {
+    if (a === b) return;
+    if (springExists(a, b)) return;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    springs.push({ a, b, rest: Math.sqrt(dx*dx + dy*dy) || DEFAULT_SPRING_REST_LENGTH });
+  }
+
+  // ─── Canvas mouse helpers ─────────────────────────────────────────────────────
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    if (e.touches) {
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+    }
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function ballAt(x, y) {
+    for (let i = balls.length - 1; i >= 0; i--) {
+      const b = balls[i];
+      const dx = b.x - x, dy = b.y - y;
+      if (dx*dx + dy*dy <= b.r * b.r) return b;
+    }
+    return null;
+  }
+
+  // ─── Mouse / Touch events ─────────────────────────────────────────────────────
+  function onPointerDown(e) {
+    e.preventDefault();
+    const { x, y } = getPos(e);
+    const hit = ballAt(x, y);
+
+    if (mode === 'add' && !hit) {
+      balls.push(makeBall(x, y));
+      return;
+    }
+
+    if (mode === 'delete' && hit) {
+      springs = springs.filter(s => s.a !== hit && s.b !== hit);
+      balls   = balls.filter(b => b !== hit);
+      if (springFirst === hit) springFirst = null;
+      return;
+    }
+
+    if (mode === 'pin' && hit) {
+      hit.pinned = !hit.pinned;
+      if (hit.pinned) { hit.vx = 0; hit.vy = 0; }
+      statusEl.textContent = hit.pinned
+        ? `Labda rögzítve (${Math.round(hit.x)}, ${Math.round(hit.y)})`
+        : 'Labda feloldva.';
+      return;
+    }
+
+    if (mode === 'spring') {
+      if (!hit) return;
+      if (!springFirst) {
+        springFirst = hit;
+        statusEl.textContent = 'Kattints a második labdára a rugóhoz.';
+      } else {
+        if (springFirst !== hit) {
+          addSpring(springFirst, hit);
+          statusEl.textContent = 'Rugó hozzáadva! Kattints az első labdára a következőhöz.';
+        }
+        springFirst = null;
+      }
+      return;
+    }
+
+    // Default: drag
+    if (hit) {
+      dragged  = hit;
+      dragOffX = hit.x - x;
+      dragOffY = hit.y - y;
+    }
+  }
+
+  function onPointerMove(e) {
+    e.preventDefault();
+    if (!dragged) return;
+    const { x, y } = getPos(e);
+    dragged.x  = x + dragOffX;
+    dragged.y  = y + dragOffY;
+    dragged.vx = 0; dragged.vy = 0;
+  }
+
+  function onPointerUp(e) {
+    dragged = null;
+  }
+
+  canvas.addEventListener('mousedown',  onPointerDown);
+  canvas.addEventListener('mousemove',  onPointerMove);
+  canvas.addEventListener('mouseup',    onPointerUp);
+  canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+  canvas.addEventListener('touchmove',  onPointerMove, { passive: false });
+  canvas.addEventListener('touchend',   onPointerUp);
+
+  // ─── Physics ──────────────────────────────────────────────────────────────────
+  function step() {
+    if (paused) return;
+
+    // Apply spring forces (Hooke's law)
+    for (const s of springs) {
+      const dx = s.b.x - s.a.x;
+      const dy = s.b.y - s.a.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || EPSILON;
+      const force = springK * (dist - s.rest);
+      const fx = (dx / dist) * force;
+      const fy = (dy / dist) * force;
+
+      if (!s.a.pinned && s.a !== dragged) { s.a.vx += fx; s.a.vy += fy; }
+      if (!s.b.pinned && s.b !== dragged) { s.b.vx -= fx; s.b.vy -= fy; }
+    }
+
+    // Gravity + integration
+    for (const b of balls) {
+      if (b.pinned || b === dragged) continue;
+
+      if (gravityOn) b.vy += gravity;
+
+      b.vx *= damping;
+      b.vy *= damping;
+
+      b.x += b.vx;
+      b.y += b.vy;
+
+      // Bounce off walls
+      if (b.x - b.r < 0)             { b.x = b.r;              b.vx *= -0.6; }
+      if (b.x + b.r > canvas.width)  { b.x = canvas.width - b.r; b.vx *= -0.6; }
+      if (b.y - b.r < 0)             { b.y = b.r;              b.vy *= -0.6; }
+      if (b.y + b.r > canvas.height) { b.y = canvas.height - b.r; b.vy *= -0.6; }
+    }
+  }
+
+  // ─── Rendering ────────────────────────────────────────────────────────────────
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Springs
+    for (const s of springs) {
+      const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const stretch = (dist - s.rest) / (s.rest || 1);
+      // Color: blue=compressed, red=stretched
+      const t = Math.max(-1, Math.min(1, stretch * 4));
+      const r = t > 0 ? Math.round(t * 220)       : 60;
+      const g = 180 - Math.round(Math.abs(t) * 120);
+      const bC = t < 0 ? Math.round(-t * 220)      : 60;
+
+      ctx.save();
+      ctx.strokeStyle = `rgb(${r},${g},${bC})`;
+      ctx.lineWidth = 2.5;
+
+      // Draw zigzag spring
+      const segs = 10;
+      const nx = -dy / dist, ny = dx / dist; // normal
+      const amp = 6;
+      ctx.beginPath();
+      ctx.moveTo(s.a.x, s.a.y);
+      for (let i = 1; i < segs; i++) {
+        const t2 = i / segs;
+        const mx = s.a.x + dx * t2;
+        const my = s.a.y + dy * t2;
+        const sign = (i % 2 === 0) ? 1 : -1;
+        ctx.lineTo(mx + nx * amp * sign, my + ny * amp * sign);
+      }
+      ctx.lineTo(s.b.x, s.b.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Highlight springFirst
+    if (springFirst) {
+      ctx.save();
+      ctx.strokeStyle = '#b388ff';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(springFirst.x, springFirst.y, springFirst.r + 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Balls
+    for (const b of balls) {
+      ctx.save();
+
+      if (b.pinned) {
+        // Pinned: grey with cross-hatch pattern
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fillStyle = '#78909c';
+        ctx.fill();
+        ctx.strokeStyle = '#cfd8dc';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Pin icon lines
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(b.x - 5, b.y - 5); ctx.lineTo(b.x + 5, b.y + 5);
+        ctx.moveTo(b.x + 5, b.y - 5); ctx.lineTo(b.x - 5, b.y + 5);
+        ctx.stroke();
+      } else {
+        // Gradient fill
+        const grad = ctx.createRadialGradient(b.x - b.r*0.3, b.y - b.r*0.3, 1, b.x, b.y, b.r);
+        grad.addColorStop(0, '#ffffff88');
+        grad.addColorStop(1, b.color);
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.strokeStyle = b.color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      // Dragged highlight
+      if (b === dragged) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r + 4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  // ─── Main loop ────────────────────────────────────────────────────────────────
+  const SUBSTEPS = 4;
+  function loop() {
+    for (let i = 0; i < SUBSTEPS; i++) step();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // ─── Initial demo scene ───────────────────────────────────────────────────────
+  function initDemo() {
+    const cx = canvas.width  / 2;
+    const cy = canvas.height / 2;
+
+    const b1 = makeBall(cx - 80, cy - 60);
+    const b2 = makeBall(cx + 80, cy - 60);
+    const b3 = makeBall(cx,      cy + 80);
+    b1.pinned = true;
+    b2.pinned = true;
+
+    balls.push(b1, b2, b3);
+    addSpring(b1, b2);
+    addSpring(b1, b3);
+    addSpring(b2, b3);
+  }
+
+  initDemo();
+  loop();
+</script>
+</body>
+</html>
