@@ -99,16 +99,16 @@
     </div>
 
     <div class="toggle-btn mt-8">
-      <input type="checkbox" id="wallChargeInput" />
-      <label for="wallChargeInput">A fal egyenletesen negatív töltésű legyen</label>
+      <input type="checkbox" id="wallChargeInput" checked />
+      <label for="wallChargeInput">A fal egyenletesen pozitív töltésű legyen</label>
     </div>
 
     <div class="slider-row mt-8">
       <div class="slider-label">
         <span>Fal töltésének nagysága</span>
-        <span id="wallChargeMagnitudeVal">0.08</span>
+        <span id="wallChargeMagnitudeVal">0.2</span>
       </div>
-      <input type="range" id="wallChargeMagnitudeInput" min="0.01" max="3" step="0.01" value="0.08" aria-label="Fal töltésének nagysága" />
+      <input type="range" id="wallChargeMagnitudeInput" min="0.01" max="3" step="0.01" value="0.2" aria-label="Fal töltésének nagysága" />
     </div>
 
     <div class="slider-row mt-8">
@@ -136,7 +136,7 @@
     </div>
 
     <div class="toggle-btn mt-8">
-      <input type="checkbox" id="uniformContoursInput" />
+      <input type="checkbox" id="uniformContoursInput" checked />
       <label for="uniformContoursInput">Egységes szintvonalköz</label>
     </div>
 
@@ -242,7 +242,7 @@
   // Visual density controls for the three background renderers.
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
-  const DEFAULT_UNIFORM_CONTOUR_STEP = 5;
+  const DEFAULT_UNIFORM_CONTOUR_STEP = 10;
   const MIN_CONTOUR_LEVEL_THRESHOLD = 0.01;
   const MIN_UNIFORM_CONTOUR_STEP = 1;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
@@ -298,12 +298,12 @@
   let colorScheme = 'forest';
   let trailLength = DEFAULT_TRAIL_LENGTH;
   let energyCorrectionEnabled = false;
-  let wallChargeEnabled = false;
-  let wallChargeMagnitude = 0.08;
+  let wallChargeEnabled = true;
+  let wallChargeMagnitude = 0.2;
   let potentialResolution = DEFAULT_POTENTIAL_GRID_RESOLUTION;
   let fieldLineFrequency = DEFAULT_FIELD_LINE_FREQUENCY;
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
-  let uniformContoursEnabled = false;
+  let uniformContoursEnabled = true;
   let uniformContourStep = DEFAULT_UNIFORM_CONTOUR_STEP;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
@@ -1281,7 +1281,7 @@
     const cy = canvas.height / 2;
 
     const positive = makeParticle(cx - 120, cy, 2, 2);
-    const negative = makeParticle(cx + 120, cy, 2, -4);
+    const negative = makeParticle(cx + 120, cy, 2, -2);
     const weakPositive = makeParticle(cx+260, cy - 200, 2.4, 2, 0, 3.5);
     positive.pinned = true;
     negative.pinned = true;
