@@ -47,9 +47,9 @@
         <span>Háttér mód</span>
       </div>
       <select id="backgroundMode">
+        <option value="potential-equipotential">Potenciál színe és szintvonalak</option>
         <option value="potential">Potenciál nagysága</option>
         <option value="equipotential">Potenciál szintvonalak</option>
-        <option value="potential-equipotential">Potenciál színe és szintvonalak</option>
         <option value="field">Erővonalak</option>
       </select>
     </div>
@@ -67,9 +67,9 @@
     <div class="slider-row mt-10">
       <div class="slider-label">
         <span>Coulomb-erő</span>
-        <span id="forceVal">140</span>
+        <span id="forceVal">500</span>
       </div>
-      <input type="range" id="forceInput" min="20" max="1000" step="5" value="140" />
+      <input type="range" id="forceInput" min="20" max="1000" step="5" value="500" />
     </div>
 
     <div class="slider-row mt-8">
@@ -83,9 +83,9 @@
     <div class="slider-row mt-8">
       <div class="slider-label">
         <span>Nyomvonal hossza</span>
-        <span id="trailLengthVal">18</span>
+        <span id="trailLengthVal">100</span>
       </div>
-      <input type="range" id="trailLengthInput" min="0" max="60" step="1" value="18" />
+      <input type="range" id="trailLengthInput" min="0" max="200" step="1" value="100" />
     </div>
 
     <div class="toggle-btn mt-8">
@@ -185,7 +185,7 @@
   const MAX_FORCE = 3.5;
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
-  const WALL_BOUNCE_COEFFICIENT = 0.7;
+  const WALL_BOUNCE_COEFFICIENT = 1.0;
   const ENERGY_CORRECTION_TOLERANCE = 1e-4; // Absolute total-energy delta that is treated as harmless floating-point noise.
   const DRAG_RELEASE_VELOCITY_SCALE = 0.45;
   const MAX_DRAG_RELEASE_SPEED = 18;
@@ -204,7 +204,7 @@
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
-  const DEFAULT_TRAIL_LENGTH = 18; // Long enough to reveal motion without cluttering the field view.
+  const DEFAULT_TRAIL_LENGTH = 100; // Long enough to reveal motion without cluttering the field view.
   const MAX_TRAIL_SEGMENT_ALPHA = 0.42; // Keep trails visible while leaving the field rendering readable underneath.
   const TRAIL_POINT_EPSILON = 0.25;
   const TRAIL_POINT_EPSILON_SQ = TRAIL_POINT_EPSILON * TRAIL_POINT_EPSILON;
@@ -247,9 +247,9 @@
   let dragLastMoveTime = 0;
   let nextParticleMass = 2;
   let nextParticleCharge = 2;
-  let fieldStrength = 140;
-  let damping = 0.992;
-  let backgroundMode = 'potential';
+  let fieldStrength = 500;
+  let damping = 1.0;
+  let backgroundMode = 'potential-equipotential';
   let colorScheme = 'forest';
   let trailLength = DEFAULT_TRAIL_LENGTH;
   let energyCorrectionEnabled = false;
@@ -1045,7 +1045,7 @@
 
     const positive = makeParticle(cx - 120, cy, 3.8, 2);
     const negative = makeParticle(cx + 120, cy, 3.4, -2);
-    const weakPositive = makeParticle(cx, cy - 90, 2.4, 2);
+    const weakPositive = makeParticle(cx+260, cy - 200, 2.4, 2, 0, 2.5);
     positive.pinned = true;
     negative.pinned = true;
 
