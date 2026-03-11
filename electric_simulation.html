@@ -170,7 +170,7 @@
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
   const WALL_BOUNCE_COEFFICIENT = 0.7;
-  const ENERGY_CORRECTION_TOLERANCE = 1e-4;
+  const ENERGY_CORRECTION_TOLERANCE = 1e-4; // Absolute total-energy delta that is treated as harmless floating-point noise.
   const DRAG_RELEASE_VELOCITY_SCALE = 0.45;
   const MAX_DRAG_RELEASE_SPEED = 18;
   const DRAG_RELEASE_STALE_MS = 140;
@@ -655,6 +655,7 @@
       currentParticle.vy += accelerationY;
     }
 
+    // First keep the conservative Coulomb update energy-neutral, then apply damping so friction can still remove energy.
     correctEnergyDrift(trackedTotalEnergy);
 
     for (const particle of particles) {
