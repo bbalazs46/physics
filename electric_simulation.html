@@ -64,6 +64,14 @@
       </select>
     </div>
 
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Nullapotenciál helye</span>
+        <span id="potentialZeroOffsetVal">0%</span>
+      </div>
+      <input type="range" id="potentialZeroOffsetInput" min="-0.9" max="0.9" step="0.01" value="0" />
+    </div>
+
     <div class="slider-row mt-10">
       <div class="slider-label">
         <span>Coulomb-erő</span>
@@ -195,6 +203,8 @@
   const colorSchemeInput = document.getElementById('colorScheme');
   const forceInput = document.getElementById('forceInput');
   const forceVal = document.getElementById('forceVal');
+  const potentialZeroOffsetInput = document.getElementById('potentialZeroOffsetInput');
+  const potentialZeroOffsetVal = document.getElementById('potentialZeroOffsetVal');
   const inverseRepulsionInput = document.getElementById('inverseRepulsionInput');
   const dampingInput = document.getElementById('dampingInput');
   const dampingVal = document.getElementById('dampingVal');
@@ -253,6 +263,7 @@
   const MIN_TRAIL_LINE_WIDTH = 1.2;
   const TRAIL_LINE_WIDTH_FACTOR = 0.45;
   const POTENTIAL_HUE_TRANSITION_RATIO = 0.14;
+  const DEFAULT_POTENTIAL_ZERO_OFFSET_RATIO = 0;
   const MIN_POTENTIAL_TRANSITION_RANGE = 1;
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
@@ -296,6 +307,7 @@
   let damping = 1.0;
   let backgroundMode = 'equipotential';
   let colorScheme = 'forest';
+  let potentialZeroOffsetRatio = DEFAULT_POTENTIAL_ZERO_OFFSET_RATIO;
   let trailLength = DEFAULT_TRAIL_LENGTH;
   let energyCorrectionEnabled = false;
   let wallChargeEnabled = true;
@@ -324,6 +336,10 @@
 
   function getPotentialColorScheme() {
     return POTENTIAL_COLOR_SCHEMES[colorScheme] || POTENTIAL_COLOR_SCHEMES.forest;
+  }
+
+  function getPotentialZeroReference(maxMagnitude) {
+    return potentialZeroOffsetRatio * (maxMagnitude || 1);
   }
 
   function buildWallChargeSamples() {
@@ -448,6 +464,7 @@
     massVal.textContent = nextParticleMass.toFixed(1);
     chargeVal.textContent = formatCharge(nextParticleCharge);
     forceVal.textContent = Math.round(fieldStrength);
+    potentialZeroOffsetVal.textContent = `${Math.round(potentialZeroOffsetRatio * 100)}%`;
     dampingVal.textContent = damping.toFixed(3);
     trailLengthVal.textContent = Math.round(trailLength);
     wallChargeMagnitudeVal.textContent = wallChargeMagnitude.toFixed(2);
@@ -682,6 +699,11 @@
 
   colorSchemeInput.addEventListener('change', () => {
     colorScheme = colorSchemeInput.value;
+  });
+
+  potentialZeroOffsetInput.addEventListener('input', () => {
+    potentialZeroOffsetRatio = parseFloat(potentialZeroOffsetInput.value);
+    updateEditorValues();
   });
 
   forceInput.addEventListener('input', () => {
@@ -995,17 +1017,24 @@
     for (let x = potentialResolution / 2; x < canvas.width; x += potentialResolution) {
       for (let y = potentialResolution / 2; y < canvas.height; y += potentialResolution) {
         const potential = potentialAt(x, y);
-        const magnitude = Math.abs(potential);
-        samples.push({ x, y, magnitude, potential });
-        if (magnitude > maxMagnitude) maxMagnitude = magnitude;
+        samples.push({ x, y, potential });
+        maxMagnitude = Math.max(maxMagnitude, Math.abs(potential));
       }
     }
 
-    const scale = maxMagnitude || 1;
+    const zeroReference = getPotentialZeroReference(maxMagnitude);
+    let maxAdjustedMagnitude = 0;
+    for (const sample of samples) {
+      sample.adjustedPotential = sample.potential - zeroReference;
+      sample.magnitude = Math.abs(sample.adjustedPotential);
+      maxAdjustedMagnitude = Math.max(maxAdjustedMagnitude, sample.magnitude);
+    }
+
+    const scale = maxAdjustedMagnitude || 1;
     const transitionScale = Math.max(scale * POTENTIAL_HUE_TRANSITION_RATIO, MIN_POTENTIAL_TRANSITION_RANGE);
     for (const sample of samples) {
       const t = Math.min(1, sample.magnitude / scale);
-      const normalizedPotential = Math.max(-1, Math.min(1, sample.potential / transitionScale));
+      const normalizedPotential = Math.max(-1, Math.min(1, sample.adjustedPotential / transitionScale));
       // Map the signed potential from [-1, 1] into [0, 1] by scaling and offsetting it by 0.5, then smooth that mix factor for a softer hue transition.
       const transition = (normalizedPotential * 0.5) + 0.5;
       const smoothedTransition = smoothStep(transition);
@@ -1047,6 +1076,15 @@
         const value = potentialAt(ix * potentialResolution, iy * potentialResolution);
         field[ix][iy] = value;
         maxAbs = Math.max(maxAbs, Math.abs(value));
+      }
+    }
+
+    const zeroReference = getPotentialZeroReference(maxAbs);
+    maxAbs = 0;
+    for (let ix = 0; ix <= cols; ix++) {
+      for (let iy = 0; iy <= rows; iy++) {
+        field[ix][iy] -= zeroReference;
+        maxAbs = Math.max(maxAbs, Math.abs(field[ix][iy]));
       }
     }
 
