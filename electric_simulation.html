@@ -84,8 +84,26 @@
         <span>Potenciál felbontása</span>
         <span id="potentialResolutionVal">26</span>
       </div>
-      <input type="range" id="potentialResolutionInput" min="14" max="48" step="2" value="26" />
+      <input type="range" id="potentialResolutionInput" min="1" max="48" step="1" value="26" />
     </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Erővonalak gyakorisága</span>
+        <span id="fieldLineFrequencyVal">12</span>
+      </div>
+      <input type="range" id="fieldLineFrequencyInput" min="1" max="24" step="1" value="12" />
+    </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Szintvonalak gyakorisága</span>
+        <span id="contourLineFrequencyVal">3</span>
+      </div>
+      <input type="range" id="contourLineFrequencyInput" min="1" max="8" step="1" value="3" />
+    </div>
+
+    <p class="control-note mt-8">Az 1-hez közeli potenciálfelbontás részletesebb, de lassabb megjelenítést okozhat.</p>
   </div>
 
   <div class="section">
@@ -136,6 +154,10 @@
   const dampingVal = document.getElementById('dampingVal');
   const potentialResolutionInput = document.getElementById('potentialResolutionInput');
   const potentialResolutionVal = document.getElementById('potentialResolutionVal');
+  const fieldLineFrequencyInput = document.getElementById('fieldLineFrequencyInput');
+  const fieldLineFrequencyVal = document.getElementById('fieldLineFrequencyVal');
+  const contourLineFrequencyInput = document.getElementById('contourLineFrequencyInput');
+  const contourLineFrequencyVal = document.getElementById('contourLineFrequencyVal');
 
   const modeButtons = [btnMove, btnAdd, btnDelete, btnPin];
   const PALETTES = {
@@ -158,10 +180,11 @@
   // Visual density controls for the three background renderers.
   const FIELD_ARROW_GRID_STEP = 34;
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 26;
-  const CONTOUR_LEVEL_FACTORS = [-0.72, -0.45, -0.22, 0.22, 0.45, 0.72];
+  const DEFAULT_CONTOUR_LINE_FREQUENCY = 3;
+  const MAX_CONTOUR_LEVEL_SCALE = 0.9;
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
-  const STREAM_SEEDS = 12;
+  const DEFAULT_FIELD_LINE_FREQUENCY = 12;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -193,6 +216,8 @@
   let backgroundMode = 'field';
   let colorScheme = 'forest';
   let potentialResolution = DEFAULT_POTENTIAL_GRID_RESOLUTION;
+  let fieldLineFrequency = DEFAULT_FIELD_LINE_FREQUENCY;
+  let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
   let nextParticleId = 1;
 
   function radiusForMass(mass) {
@@ -242,6 +267,16 @@
     forceVal.textContent = Math.round(fieldStrength);
     dampingVal.textContent = damping.toFixed(3);
     potentialResolutionVal.textContent = Math.round(potentialResolution);
+    fieldLineFrequencyVal.textContent = Math.round(fieldLineFrequency);
+    contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
+  }
+
+  function getContourLevelFactors() {
+    const positiveLevels = [];
+    for (let index = 1; index <= contourLineFrequency; index++) {
+      positiveLevels.push((index / (contourLineFrequency + 1)) * MAX_CONTOUR_LEVEL_SCALE);
+    }
+    return positiveLevels.map(level => -level).reverse().concat(positiveLevels);
   }
 
   function syncControlsToSelectedParticle() {
@@ -341,6 +376,16 @@
 
   potentialResolutionInput.addEventListener('input', () => {
     potentialResolution = parseFloat(potentialResolutionInput.value);
+    updateEditorValues();
+  });
+
+  fieldLineFrequencyInput.addEventListener('input', () => {
+    fieldLineFrequency = parseInt(fieldLineFrequencyInput.value, 10);
+    updateEditorValues();
+  });
+
+  contourLineFrequencyInput.addEventListener('input', () => {
+    contourLineFrequency = parseInt(contourLineFrequencyInput.value, 10);
     updateEditorValues();
   });
 
@@ -566,7 +611,7 @@
       }
     }
 
-    const levels = CONTOUR_LEVEL_FACTORS
+    const levels = getContourLevelFactors()
       .map(factor => factor * (maxAbs || 1))
       .filter(level => Math.abs(level) > 0.01);
 
@@ -647,8 +692,8 @@
       if (Math.abs(particle.charge) < 0.05) continue;
       const direction = particle.charge > 0 ? 1 : -1;
       const strokeStyle = particle.charge > 0 ? `${palette.positive}cc` : `${palette.negative}cc`;
-      for (let i = 0; i < STREAM_SEEDS; i++) {
-        const angle = (Math.PI * 2 * i) / STREAM_SEEDS;
+      for (let i = 0; i < fieldLineFrequency; i++) {
+        const angle = (Math.PI * 2 * i) / fieldLineFrequency;
         const seedX = particle.x + Math.cos(angle) * (particle.r + FIELD_LINE_SEED_OFFSET);
         const seedY = particle.y + Math.sin(angle) * (particle.r + FIELD_LINE_SEED_OFFSET);
         traceFieldLine(seedX, seedY, direction, strokeStyle);
