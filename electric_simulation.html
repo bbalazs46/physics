@@ -93,6 +93,11 @@
       <label for="energyCorrectionInput">Energiamegmaradás-korrekció</label>
     </div>
 
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="wallChargeInput" />
+      <label for="wallChargeInput">A fal egyenletesen pozitív töltésű legyen</label>
+    </div>
+
     <div class="slider-row mt-8">
       <div class="slider-label">
         <span>Potenciál felbontása</span>
@@ -169,6 +174,7 @@
   const trailLengthInput = document.getElementById('trailLengthInput');
   const trailLengthVal = document.getElementById('trailLengthVal');
   const energyCorrectionInput = document.getElementById('energyCorrectionInput');
+  const wallChargeInput = document.getElementById('wallChargeInput');
   const potentialResolutionInput = document.getElementById('potentialResolutionInput');
   const potentialResolutionVal = document.getElementById('potentialResolutionVal');
   const fieldLineFrequencyInput = document.getElementById('fieldLineFrequencyInput');
@@ -186,6 +192,8 @@
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
   const WALL_BOUNCE_COEFFICIENT = 1.0;
+  const WALL_CHARGE_SAMPLE_SPACING = 42;
+  const WALL_CHARGE_SAMPLE_CHARGE = 0.08;
   const ENERGY_CORRECTION_TOLERANCE = 1e-4; // Absolute total-energy delta that is treated as harmless floating-point noise.
   const DRAG_RELEASE_VELOCITY_SCALE = 0.45;
   const MAX_DRAG_RELEASE_SPEED = 18;
@@ -255,11 +263,14 @@
   let colorScheme = 'forest';
   let trailLength = DEFAULT_TRAIL_LENGTH;
   let energyCorrectionEnabled = false;
+  let wallChargeEnabled = false;
   let potentialResolution = DEFAULT_POTENTIAL_GRID_RESOLUTION;
   let fieldLineFrequency = DEFAULT_FIELD_LINE_FREQUENCY;
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
+  let cachedWallChargeSignature = '';
+  let cachedWallChargeSamples = [];
 
   function radiusForMass(mass) {
     return 9 + Math.sqrt(mass) * 4;
@@ -275,6 +286,38 @@
 
   function getPotentialColorScheme() {
     return POTENTIAL_COLOR_SCHEMES[colorScheme] || POTENTIAL_COLOR_SCHEMES.forest;
+  }
+
+  function buildWallChargeSamples() {
+    const samples = [];
+    const horizontalSegments = Math.max(2, Math.ceil(canvas.width / WALL_CHARGE_SAMPLE_SPACING));
+    const verticalSegments = Math.max(2, Math.ceil(canvas.height / WALL_CHARGE_SAMPLE_SPACING));
+    const horizontalStep = canvas.width / horizontalSegments;
+    const verticalStep = canvas.height / verticalSegments;
+
+    for (let index = 0; index < horizontalSegments; index++) {
+      const x = (index + 0.5) * horizontalStep;
+      samples.push({ x, y: 0, charge: WALL_CHARGE_SAMPLE_CHARGE });
+      samples.push({ x, y: canvas.height, charge: WALL_CHARGE_SAMPLE_CHARGE });
+    }
+
+    for (let index = 0; index < verticalSegments; index++) {
+      const y = (index + 0.5) * verticalStep;
+      samples.push({ x: 0, y, charge: WALL_CHARGE_SAMPLE_CHARGE });
+      samples.push({ x: canvas.width, y, charge: WALL_CHARGE_SAMPLE_CHARGE });
+    }
+
+    return samples;
+  }
+
+  function getWallChargeSamples() {
+    if (!wallChargeEnabled) return [];
+    const signature = `${canvas.width}x${canvas.height}`;
+    if (cachedWallChargeSignature !== signature) {
+      cachedWallChargeSignature = signature;
+      cachedWallChargeSamples = buildWallChargeSamples();
+    }
+    return cachedWallChargeSamples;
   }
 
   /**
@@ -418,6 +461,13 @@
         const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY + EPSILON);
         potentialEnergy += fieldStrength * particle.charge * otherParticle.charge / dist;
       }
+
+      for (const wallSample of getWallChargeSamples()) {
+        const deltaX = particle.x - wallSample.x;
+        const deltaY = particle.y - wallSample.y;
+        const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY + EPSILON);
+        potentialEnergy += fieldStrength * particle.charge * wallSample.charge / dist;
+      }
     }
 
     return {
@@ -541,6 +591,11 @@
 
   energyCorrectionInput.addEventListener('change', () => {
     energyCorrectionEnabled = energyCorrectionInput.checked;
+    resetTrackedTotalEnergy();
+  });
+
+  wallChargeInput.addEventListener('change', () => {
+    wallChargeEnabled = wallChargeInput.checked;
     resetTrackedTotalEnergy();
   });
 
@@ -705,6 +760,12 @@
       const dist = Math.sqrt(dx * dx + dy * dy + EPSILON);
       potential += fieldStrength * particle.charge / dist;
     }
+    for (const wallSample of getWallChargeSamples()) {
+      const dx = x - wallSample.x;
+      const dy = y - wallSample.y;
+      const dist = Math.sqrt(dx * dx + dy * dy + EPSILON);
+      potential += fieldStrength * wallSample.charge / dist;
+    }
     return potential;
   }
 
@@ -717,6 +778,15 @@
       const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
       const dist = Math.sqrt(distSq);
       const scale = fieldStrength * particle.charge / (distSq * dist);
+      fieldX += deltaX * scale;
+      fieldY += deltaY * scale;
+    }
+    for (const wallSample of getWallChargeSamples()) {
+      const deltaX = x - wallSample.x;
+      const deltaY = y - wallSample.y;
+      const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
+      const dist = Math.sqrt(distSq);
+      const scale = fieldStrength * wallSample.charge / (distSq * dist);
       fieldX += deltaX * scale;
       fieldY += deltaY * scale;
     }
@@ -743,6 +813,17 @@
         const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
         const dist = Math.sqrt(distSq);
         const rawForce = fieldStrength * currentParticle.charge * otherParticle.charge / distSq;
+        const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
+        accelerationX += (force * deltaX / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
+        accelerationY += (force * deltaY / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
+      }
+
+      for (const wallSample of getWallChargeSamples()) {
+        const deltaX = currentParticle.x - wallSample.x;
+        const deltaY = currentParticle.y - wallSample.y;
+        const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
+        const dist = Math.sqrt(distSq);
+        const rawForce = fieldStrength * currentParticle.charge * wallSample.charge / distSq;
         const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
         accelerationX += (force * deltaX / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
         accelerationY += (force * deltaY / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
@@ -951,7 +1032,18 @@
     ctx.fillStyle = '#0d1b2a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    if (particles.length === 0) return;
+    if (wallChargeEnabled) {
+      const palette = getPalette();
+      ctx.save();
+      ctx.strokeStyle = `${palette.positive}cc`;
+      ctx.shadowColor = `${palette.positive}88`;
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(1.5, 1.5, canvas.width - 3, canvas.height - 3);
+      ctx.restore();
+    }
+
+    if (particles.length === 0 && !wallChargeEnabled) return;
 
     if (backgroundMode === 'potential') {
       drawPotentialMap();
