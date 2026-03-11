@@ -152,6 +152,17 @@
       background: #0d1b2a;
       cursor: crosshair;
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      button {
+        transition: background 0.15s, box-shadow 0.15s, outline-color 0.15s;
+      }
+
+      button:active,
+      button.active {
+        transform: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -273,6 +284,7 @@
   const btnClear    = document.getElementById('btnClear');
   const btnPause    = document.getElementById('btnPause');
   const btnReset    = document.getElementById('btnReset');
+  const modeButtons = [btnMove, btnAdd, btnDelete, btnPin, btnSpring];
   const springKIn   = document.getElementById('springK');
   const dampingIn   = document.getElementById('damping');
   const gravIn      = document.getElementById('gravStrength');
@@ -283,25 +295,33 @@
   function setMode(m) {
     mode = m;
     springFirst = null;
-    [btnMove, btnAdd, btnDelete, btnPin, btnSpring].forEach(b => b.classList.remove('active'));
+    modeButtons.forEach(b => {
+      b.classList.remove('active');
+      b.setAttribute('aria-pressed', 'false');
+    });
     if (m === 'move') {
       btnMove.classList.add('active');
+      btnMove.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'grab';
       statusEl.textContent = 'Fogd meg és mozgasd a labdákat.';
     } else if (m === 'add') {
       btnAdd.classList.add('active');
+      btnAdd.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'crosshair';
       statusEl.textContent = 'Kattints a vászonra labda hozzáadásához.';
     } else if (m === 'delete') {
       btnDelete.classList.add('active');
+      btnDelete.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'pointer';
       statusEl.textContent = 'Kattints egy labdára a törléséhez.';
     } else if (m === 'pin') {
       btnPin.classList.add('active');
+      btnPin.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'pointer';
       statusEl.textContent = 'Kattints egy labdára a rögzítés/feloldáshoz.';
     } else if (m === 'spring') {
       btnSpring.classList.add('active');
+      btnSpring.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'pointer';
       statusEl.textContent = 'Kattints az első labdára a rugóhoz.';
     }
