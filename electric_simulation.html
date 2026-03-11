@@ -76,7 +76,15 @@
         <span>Csillapítás</span>
         <span id="dampingVal">0.992</span>
       </div>
-      <input type="range" id="dampingInput" min="0.94" max="0.999" step="0.001" value="0.992" />
+      <input type="range" id="dampingInput" min="0.8" max="1.0" step="0.001" value="0.992" />
+    </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Potenciál felbontása</span>
+        <span id="potentialResolutionVal">26</span>
+      </div>
+      <input type="range" id="potentialResolutionInput" min="14" max="48" step="2" value="26" />
     </div>
   </div>
 
@@ -126,6 +134,8 @@
   const forceVal = document.getElementById('forceVal');
   const dampingInput = document.getElementById('dampingInput');
   const dampingVal = document.getElementById('dampingVal');
+  const potentialResolutionInput = document.getElementById('potentialResolutionInput');
+  const potentialResolutionVal = document.getElementById('potentialResolutionVal');
 
   const modeButtons = [btnMove, btnAdd, btnDelete, btnPin];
   const PALETTES = {
@@ -139,14 +149,15 @@
   const WALL_BOUNCE_COEFFICIENT = 0.7;
   const FIELD_LINE_SEED_OFFSET = 6;
   const FIELD_ARROW_HALF_LENGTH = 6;
-  const POTENTIAL_MAP_HUE_START = 225;
-  const POTENTIAL_MAP_HUE_RANGE = 165;
   const POTENTIAL_MAP_LIGHTNESS_MIN = 12;
   const POTENTIAL_MAP_LIGHTNESS_RANGE = 55;
+  const POTENTIAL_COLOR_SCHEMES = {
+    forest: { positiveHue: 56, negativeHue: 150 },
+    classic: { positiveHue: 2, negativeHue: 218 }
+  };
   // Visual density controls for the three background renderers.
   const FIELD_ARROW_GRID_STEP = 34;
-  const POTENTIAL_MAP_GRID_STEP = 26;
-  const EQUIPOTENTIAL_GRID_STEP = 36;
+  const DEFAULT_POTENTIAL_GRID_RESOLUTION = 26;
   const CONTOUR_LEVEL_FACTORS = [-0.72, -0.45, -0.22, 0.22, 0.45, 0.72];
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
@@ -181,6 +192,7 @@
   let damping = 0.992;
   let backgroundMode = 'field';
   let colorScheme = 'forest';
+  let potentialResolution = DEFAULT_POTENTIAL_GRID_RESOLUTION;
   let nextParticleId = 1;
 
   function radiusForMass(mass) {
@@ -193,6 +205,10 @@
 
   function getPalette() {
     return PALETTES[colorScheme] || PALETTES.forest;
+  }
+
+  function getPotentialColorScheme() {
+    return POTENTIAL_COLOR_SCHEMES[colorScheme] || POTENTIAL_COLOR_SCHEMES.forest;
   }
 
   function updateParticleAppearance(particle) {
@@ -225,6 +241,7 @@
     chargeVal.textContent = formatCharge(nextParticleCharge);
     forceVal.textContent = Math.round(fieldStrength);
     dampingVal.textContent = damping.toFixed(3);
+    potentialResolutionVal.textContent = Math.round(potentialResolution);
   }
 
   function syncControlsToSelectedParticle() {
@@ -319,6 +336,11 @@
 
   dampingInput.addEventListener('input', () => {
     damping = parseFloat(dampingInput.value);
+    updateEditorValues();
+  });
+
+  potentialResolutionInput.addEventListener('input', () => {
+    potentialResolution = parseFloat(potentialResolutionInput.value);
     updateEditorValues();
   });
 
@@ -490,11 +512,13 @@
   function drawPotentialMap() {
     const samples = [];
     let maxMagnitude = 0;
+    const scheme = getPotentialColorScheme();
 
-    for (let x = POTENTIAL_MAP_GRID_STEP / 2; x < canvas.width; x += POTENTIAL_MAP_GRID_STEP) {
-      for (let y = POTENTIAL_MAP_GRID_STEP / 2; y < canvas.height; y += POTENTIAL_MAP_GRID_STEP) {
-        const magnitude = Math.abs(potentialAt(x, y));
-        samples.push({ x, y, magnitude });
+    for (let x = potentialResolution / 2; x < canvas.width; x += potentialResolution) {
+      for (let y = potentialResolution / 2; y < canvas.height; y += potentialResolution) {
+        const potential = potentialAt(x, y);
+        const magnitude = Math.abs(potential);
+        samples.push({ x, y, magnitude, potential });
         if (magnitude > maxMagnitude) maxMagnitude = magnitude;
       }
     }
@@ -502,14 +526,14 @@
     const scale = maxMagnitude || 1;
     for (const sample of samples) {
       const t = Math.min(1, sample.magnitude / scale);
-      const hue = POTENTIAL_MAP_HUE_START - t * POTENTIAL_MAP_HUE_RANGE;
+      const hue = sample.potential >= 0 ? scheme.positiveHue : scheme.negativeHue;
       const lightness = POTENTIAL_MAP_LIGHTNESS_MIN + t * POTENTIAL_MAP_LIGHTNESS_RANGE;
       ctx.fillStyle = `hsla(${hue}, 75%, ${lightness}%, 0.58)`;
       ctx.fillRect(
-        sample.x - POTENTIAL_MAP_GRID_STEP / 2,
-        sample.y - POTENTIAL_MAP_GRID_STEP / 2,
-        POTENTIAL_MAP_GRID_STEP,
-        POTENTIAL_MAP_GRID_STEP
+        sample.x - potentialResolution / 2,
+        sample.y - potentialResolution / 2,
+        potentialResolution,
+        potentialResolution
       );
     }
   }
@@ -528,14 +552,15 @@
   }
 
   function drawEquipotentialLines() {
-    const cols = Math.ceil(canvas.width / EQUIPOTENTIAL_GRID_STEP);
-    const rows = Math.ceil(canvas.height / EQUIPOTENTIAL_GRID_STEP);
+    const palette = getPalette();
+    const cols = Math.ceil(canvas.width / potentialResolution);
+    const rows = Math.ceil(canvas.height / potentialResolution);
     const field = Array.from({ length: cols + 1 }, () => Array(rows + 1).fill(0));
     let maxAbs = 0;
 
     for (let ix = 0; ix <= cols; ix++) {
       for (let iy = 0; iy <= rows; iy++) {
-        const value = potentialAt(ix * EQUIPOTENTIAL_GRID_STEP, iy * EQUIPOTENTIAL_GRID_STEP);
+        const value = potentialAt(ix * potentialResolution, iy * potentialResolution);
         field[ix][iy] = value;
         maxAbs = Math.max(maxAbs, Math.abs(value));
       }
@@ -547,23 +572,23 @@
 
     for (const level of levels) {
       ctx.beginPath();
-      ctx.strokeStyle = level > 0 ? 'rgba(255, 191, 145, 0.8)' : 'rgba(120, 196, 255, 0.8)';
+      ctx.strokeStyle = level > 0 ? `${palette.positive}cc` : `${palette.negative}cc`;
       ctx.lineWidth = 1.4;
 
       for (let ix = 0; ix < cols; ix++) {
         for (let iy = 0; iy < rows; iy++) {
-          const x = ix * EQUIPOTENTIAL_GRID_STEP;
-          const y = iy * EQUIPOTENTIAL_GRID_STEP;
+          const x = ix * potentialResolution;
+          const y = iy * potentialResolution;
           const vTL = field[ix][iy];
           const vTR = field[ix + 1][iy];
           const vBR = field[ix + 1][iy + 1];
           const vBL = field[ix][iy + 1];
 
           const edges = {
-            top: interpolatePoint(x, y, vTL, x + EQUIPOTENTIAL_GRID_STEP, y, vTR, level),
-            right: interpolatePoint(x + EQUIPOTENTIAL_GRID_STEP, y, vTR, x + EQUIPOTENTIAL_GRID_STEP, y + EQUIPOTENTIAL_GRID_STEP, vBR, level),
-            bottom: interpolatePoint(x, y + EQUIPOTENTIAL_GRID_STEP, vBL, x + EQUIPOTENTIAL_GRID_STEP, y + EQUIPOTENTIAL_GRID_STEP, vBR, level),
-            left: interpolatePoint(x, y, vTL, x, y + EQUIPOTENTIAL_GRID_STEP, vBL, level)
+            top: interpolatePoint(x, y, vTL, x + potentialResolution, y, vTR, level),
+            right: interpolatePoint(x + potentialResolution, y, vTR, x + potentialResolution, y + potentialResolution, vBR, level),
+            bottom: interpolatePoint(x, y + potentialResolution, vBL, x + potentialResolution, y + potentialResolution, vBR, level),
+            left: interpolatePoint(x, y, vTL, x, y + potentialResolution, vBL, level)
           };
 
           let index = 0;
