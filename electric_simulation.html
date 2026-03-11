@@ -432,6 +432,19 @@
     return value * value * (3 - (2 * value));
   }
 
+  function getPotentialColor(potential, scale, alpha, scheme = getPotentialColorScheme()) {
+    const magnitudeScale = scale || 1;
+    const transitionScale = Math.max(magnitudeScale * POTENTIAL_HUE_TRANSITION_RATIO, MIN_POTENTIAL_TRANSITION_RANGE);
+    const t = Math.min(1, Math.abs(potential) / magnitudeScale);
+    const normalizedPotential = Math.max(-1, Math.min(1, potential / transitionScale));
+    const transition = (normalizedPotential * 0.5) + 0.5;
+    const smoothedTransition = smoothStep(transition);
+    const hueDelta = shortestHueDistance(scheme.negativeHue, scheme.positiveHue);
+    const hue = (scheme.negativeHue + (hueDelta * smoothedTransition) + 360) % 360;
+    const lightness = POTENTIAL_MAP_LIGHTNESS_MIN + t * POTENTIAL_MAP_LIGHTNESS_RANGE;
+    return `hsla(${hue}, 75%, ${lightness}%, ${alpha})`;
+  }
+
   function updateParticleAppearance(particle) {
     particle.r = radiusForMass(particle.mass);
   }
@@ -1011,17 +1024,8 @@
     }
 
     const scale = maxAdjustedMagnitude || 1;
-    const transitionScale = Math.max(scale * POTENTIAL_HUE_TRANSITION_RATIO, MIN_POTENTIAL_TRANSITION_RANGE);
     for (const sample of samples) {
-      const t = Math.min(1, sample.magnitude / scale);
-      const normalizedPotential = Math.max(-1, Math.min(1, sample.adjustedPotential / transitionScale));
-      // Map the signed potential from [-1, 1] into [0, 1] by scaling and offsetting it by 0.5, then smooth that mix factor for a softer hue transition.
-      const transition = (normalizedPotential * 0.5) + 0.5;
-      const smoothedTransition = smoothStep(transition);
-      const hueDelta = shortestHueDistance(scheme.negativeHue, scheme.positiveHue);
-      const hue = (scheme.negativeHue + (hueDelta * smoothedTransition) + 360) % 360;
-      const lightness = POTENTIAL_MAP_LIGHTNESS_MIN + t * POTENTIAL_MAP_LIGHTNESS_RANGE;
-      ctx.fillStyle = `hsla(${hue}, 75%, ${lightness}%, 0.58)`;
+      ctx.fillStyle = getPotentialColor(sample.adjustedPotential, scale, 0.58, scheme);
       ctx.fillRect(
         sample.x - potentialResolution / 2,
         sample.y - potentialResolution / 2,
@@ -1045,11 +1049,11 @@
   }
 
   function drawEquipotentialLines() {
-    const palette = getPalette();
     const cols = Math.ceil(canvas.width / potentialResolution);
     const rows = Math.ceil(canvas.height / potentialResolution);
     const field = Array.from({ length: cols + 1 }, () => Array(rows + 1).fill(0));
     let maxAbs = 0;
+    const scheme = getPotentialColorScheme();
 
     for (let ix = 0; ix <= cols; ix++) {
       for (let iy = 0; iy <= rows; iy++) {
@@ -1072,7 +1076,7 @@
 
     for (const level of levels) {
       ctx.beginPath();
-      ctx.strokeStyle = level > 0 ? `${palette.positive}cc` : `${palette.negative}cc`;
+      ctx.strokeStyle = getPotentialColor(level, maxAbs, 0.8, scheme);
       ctx.lineWidth = 1.4;
 
       for (let ix = 0; ix < cols; ix++) {
