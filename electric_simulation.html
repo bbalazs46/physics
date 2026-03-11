@@ -346,7 +346,7 @@
 
   function buildWallChargeSamples() {
     const samples = [];
-    const wallSampleCharge = -wallChargeMagnitude;
+    const wallSampleCharge = wallChargeMagnitude;
     const horizontalSegments = Math.max(2, Math.ceil(canvas.width / WALL_CHARGE_SAMPLE_SPACING));
     const verticalSegments = Math.max(2, Math.ceil(canvas.height / WALL_CHARGE_SAMPLE_SPACING));
     const horizontalStep = canvas.width / horizontalSegments;
