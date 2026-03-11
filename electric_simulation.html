@@ -134,12 +134,39 @@
   };
   const EPSILON = 600;
   const MAX_FORCE = 3.5;
-  const FIELD_STEP = 34;
-  const MAP_STEP = 26;
-  const CONTOUR_STEP = 36;
+  const INTERPOLATION_EPSILON = 1e-6;
+  const MIN_PARTICLE_MASS = 0.1;
+  const WALL_BOUNCE_COEFFICIENT = 0.7;
+  const FIELD_LINE_SEED_OFFSET = 6;
+  const FIELD_ARROW_HALF_LENGTH = 6;
+  const POTENTIAL_MAP_HUE_START = 225;
+  const POTENTIAL_MAP_HUE_RANGE = 165;
+  const POTENTIAL_MAP_LIGHTNESS_MIN = 12;
+  const POTENTIAL_MAP_LIGHTNESS_RANGE = 55;
+  // Visual density controls for the three background renderers.
+  const FIELD_ARROW_GRID_STEP = 34;
+  const POTENTIAL_MAP_GRID_STEP = 26;
+  const EQUIPOTENTIAL_GRID_STEP = 36;
+  const CONTOUR_LEVEL_FACTORS = [-0.72, -0.45, -0.22, 0.22, 0.45, 0.72];
   const STREAM_STEP = 9;
   const STREAM_STEPS = 110;
   const STREAM_SEEDS = 12;
+  const MARCHING_SQUARE_CASES = {
+    1: [['left', 'bottom']],
+    2: [['bottom', 'right']],
+    3: [['left', 'right']],
+    4: [['top', 'right']],
+    5: [['top', 'left'], ['bottom', 'right']],
+    6: [['top', 'bottom']],
+    7: [['top', 'left']],
+    8: [['left', 'top']],
+    9: [['top', 'bottom']],
+    10: [['top', 'right'], ['left', 'bottom']],
+    11: [['top', 'right']],
+    12: [['left', 'right']],
+    13: [['bottom', 'right']],
+    14: [['left', 'bottom']]
+  };
 
   let particles = [];
   let paused = false;
@@ -154,6 +181,7 @@
   let damping = 0.992;
   let backgroundMode = 'field';
   let colorScheme = 'forest';
+  let nextParticleId = 1;
 
   function radiusForMass(mass) {
     return 9 + Math.sqrt(mass) * 4;
@@ -179,7 +207,7 @@
 
   function makeParticle(x, y, mass = nextParticleMass, charge = nextParticleCharge) {
     const particle = {
-      id: Date.now() + Math.random(),
+      id: nextParticleId++,
       x,
       y,
       vx: 0,
@@ -395,43 +423,44 @@
   }
 
   function electricFieldAt(x, y) {
-    let ex = 0;
-    let ey = 0;
+    let fieldX = 0;
+    let fieldY = 0;
     for (const particle of particles) {
-      const dx = x - particle.x;
-      const dy = y - particle.y;
-      const distSq = dx * dx + dy * dy + EPSILON;
+      const deltaX = x - particle.x;
+      const deltaY = y - particle.y;
+      const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
       const dist = Math.sqrt(distSq);
       const scale = fieldStrength * particle.charge / (distSq * dist);
-      ex += dx * scale;
-      ey += dy * scale;
+      fieldX += deltaX * scale;
+      fieldY += deltaY * scale;
     }
-    return { ex, ey };
+    return { fieldX, fieldY };
   }
 
   function step() {
     if (paused) return;
 
     for (let i = 0; i < particles.length; i++) {
-      const a = particles[i];
-      if (a.pinned || a === dragged) continue;
+      const currentParticle = particles[i];
+      if (currentParticle.pinned || currentParticle === dragged) continue;
 
-      let ax = 0;
-      let ay = 0;
+      let accelerationX = 0;
+      let accelerationY = 0;
       for (let j = 0; j < particles.length; j++) {
         if (i === j) continue;
-        const b = particles[j];
-        const dx = a.x - b.x;
-        const dy = a.y - b.y;
-        const distSq = dx * dx + dy * dy + EPSILON;
+        const otherParticle = particles[j];
+        const deltaX = currentParticle.x - otherParticle.x;
+        const deltaY = currentParticle.y - otherParticle.y;
+        const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
         const dist = Math.sqrt(distSq);
-        const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, fieldStrength * a.charge * b.charge / distSq));
-        ax += (force * dx / dist) / Math.max(a.mass, 0.1);
-        ay += (force * dy / dist) / Math.max(a.mass, 0.1);
+        const rawForce = fieldStrength * currentParticle.charge * otherParticle.charge / distSq;
+        const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
+        accelerationX += (force * deltaX / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
+        accelerationY += (force * deltaY / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
       }
 
-      a.vx = (a.vx + ax) * damping;
-      a.vy = (a.vy + ay) * damping;
+      currentParticle.vx = (currentParticle.vx + accelerationX) * damping;
+      currentParticle.vy = (currentParticle.vy + accelerationY) * damping;
     }
 
     for (const particle of particles) {
@@ -441,19 +470,19 @@
 
       if (particle.x - particle.r < 0) {
         particle.x = particle.r;
-        particle.vx *= -0.7;
+        particle.vx *= -WALL_BOUNCE_COEFFICIENT;
       }
       if (particle.x + particle.r > canvas.width) {
         particle.x = canvas.width - particle.r;
-        particle.vx *= -0.7;
+        particle.vx *= -WALL_BOUNCE_COEFFICIENT;
       }
       if (particle.y - particle.r < 0) {
         particle.y = particle.r;
-        particle.vy *= -0.7;
+        particle.vy *= -WALL_BOUNCE_COEFFICIENT;
       }
       if (particle.y + particle.r > canvas.height) {
         particle.y = canvas.height - particle.r;
-        particle.vy *= -0.7;
+        particle.vy *= -WALL_BOUNCE_COEFFICIENT;
       }
     }
   }
@@ -462,8 +491,8 @@
     const samples = [];
     let maxMagnitude = 0;
 
-    for (let x = MAP_STEP / 2; x < canvas.width; x += MAP_STEP) {
-      for (let y = MAP_STEP / 2; y < canvas.height; y += MAP_STEP) {
+    for (let x = POTENTIAL_MAP_GRID_STEP / 2; x < canvas.width; x += POTENTIAL_MAP_GRID_STEP) {
+      for (let y = POTENTIAL_MAP_GRID_STEP / 2; y < canvas.height; y += POTENTIAL_MAP_GRID_STEP) {
         const magnitude = Math.abs(potentialAt(x, y));
         samples.push({ x, y, magnitude });
         if (magnitude > maxMagnitude) maxMagnitude = magnitude;
@@ -473,56 +502,46 @@
     const scale = maxMagnitude || 1;
     for (const sample of samples) {
       const t = Math.min(1, sample.magnitude / scale);
-      const hue = 225 - t * 165;
-      const lightness = 12 + t * 55;
+      const hue = POTENTIAL_MAP_HUE_START - t * POTENTIAL_MAP_HUE_RANGE;
+      const lightness = POTENTIAL_MAP_LIGHTNESS_MIN + t * POTENTIAL_MAP_LIGHTNESS_RANGE;
       ctx.fillStyle = `hsla(${hue}, 75%, ${lightness}%, 0.58)`;
-      ctx.fillRect(sample.x - MAP_STEP / 2, sample.y - MAP_STEP / 2, MAP_STEP, MAP_STEP);
+      ctx.fillRect(
+        sample.x - POTENTIAL_MAP_GRID_STEP / 2,
+        sample.y - POTENTIAL_MAP_GRID_STEP / 2,
+        POTENTIAL_MAP_GRID_STEP,
+        POTENTIAL_MAP_GRID_STEP
+      );
     }
   }
 
   function marchingSquareSegments(index, edges) {
-    const table = {
-      1: [['left', 'bottom']],
-      2: [['bottom', 'right']],
-      3: [['left', 'right']],
-      4: [['top', 'right']],
-      5: [['top', 'left'], ['bottom', 'right']],
-      6: [['top', 'bottom']],
-      7: [['top', 'left']],
-      8: [['top', 'left']],
-      9: [['top', 'bottom']],
-      10: [['top', 'right'], ['left', 'bottom']],
-      11: [['top', 'right']],
-      12: [['left', 'right']],
-      13: [['bottom', 'right']],
-      14: [['left', 'bottom']]
-    };
-    return (table[index] || []).map(([a, b]) => [edges[a], edges[b]]);
+    return (MARCHING_SQUARE_CASES[index] || []).map(([a, b]) => [edges[a], edges[b]]);
   }
 
   function interpolatePoint(x1, y1, v1, x2, y2, v2, level) {
-    const t = Math.abs(v2 - v1) < 1e-6 ? 0.5 : (level - v1) / (v2 - v1);
+    const interpolationRatio = Math.abs(v2 - v1) < INTERPOLATION_EPSILON ? 0.5 : (level - v1) / (v2 - v1);
+    const clampedRatio = Math.max(0, Math.min(1, interpolationRatio));
     return {
-      x: x1 + (x2 - x1) * t,
-      y: y1 + (y2 - y1) * t
+      x: x1 + (x2 - x1) * clampedRatio,
+      y: y1 + (y2 - y1) * clampedRatio
     };
   }
 
   function drawEquipotentialLines() {
-    const cols = Math.ceil(canvas.width / CONTOUR_STEP);
-    const rows = Math.ceil(canvas.height / CONTOUR_STEP);
+    const cols = Math.ceil(canvas.width / EQUIPOTENTIAL_GRID_STEP);
+    const rows = Math.ceil(canvas.height / EQUIPOTENTIAL_GRID_STEP);
     const field = Array.from({ length: cols + 1 }, () => Array(rows + 1).fill(0));
     let maxAbs = 0;
 
     for (let ix = 0; ix <= cols; ix++) {
       for (let iy = 0; iy <= rows; iy++) {
-        const value = potentialAt(ix * CONTOUR_STEP, iy * CONTOUR_STEP);
+        const value = potentialAt(ix * EQUIPOTENTIAL_GRID_STEP, iy * EQUIPOTENTIAL_GRID_STEP);
         field[ix][iy] = value;
         maxAbs = Math.max(maxAbs, Math.abs(value));
       }
     }
 
-    const levels = [-0.72, -0.45, -0.22, 0.22, 0.45, 0.72]
+    const levels = CONTOUR_LEVEL_FACTORS
       .map(factor => factor * (maxAbs || 1))
       .filter(level => Math.abs(level) > 0.01);
 
@@ -533,18 +552,18 @@
 
       for (let ix = 0; ix < cols; ix++) {
         for (let iy = 0; iy < rows; iy++) {
-          const x = ix * CONTOUR_STEP;
-          const y = iy * CONTOUR_STEP;
+          const x = ix * EQUIPOTENTIAL_GRID_STEP;
+          const y = iy * EQUIPOTENTIAL_GRID_STEP;
           const vTL = field[ix][iy];
           const vTR = field[ix + 1][iy];
           const vBR = field[ix + 1][iy + 1];
           const vBL = field[ix][iy + 1];
 
           const edges = {
-            top: interpolatePoint(x, y, vTL, x + CONTOUR_STEP, y, vTR, level),
-            right: interpolatePoint(x + CONTOUR_STEP, y, vTR, x + CONTOUR_STEP, y + CONTOUR_STEP, vBR, level),
-            bottom: interpolatePoint(x, y + CONTOUR_STEP, vBL, x + CONTOUR_STEP, y + CONTOUR_STEP, vBR, level),
-            left: interpolatePoint(x, y, vTL, x, y + CONTOUR_STEP, vBL, level)
+            top: interpolatePoint(x, y, vTL, x + EQUIPOTENTIAL_GRID_STEP, y, vTR, level),
+            right: interpolatePoint(x + EQUIPOTENTIAL_GRID_STEP, y, vTR, x + EQUIPOTENTIAL_GRID_STEP, y + EQUIPOTENTIAL_GRID_STEP, vBR, level),
+            bottom: interpolatePoint(x, y + EQUIPOTENTIAL_GRID_STEP, vBL, x + EQUIPOTENTIAL_GRID_STEP, y + EQUIPOTENTIAL_GRID_STEP, vBR, level),
+            left: interpolatePoint(x, y, vTL, x, y + EQUIPOTENTIAL_GRID_STEP, vBL, level)
           };
 
           let index = 0;
@@ -573,12 +592,12 @@
     ctx.moveTo(x, y);
 
     for (let stepIndex = 0; stepIndex < STREAM_STEPS; stepIndex++) {
-      const { ex, ey } = electricFieldAt(x, y);
-      const magnitude = Math.hypot(ex, ey);
+      const { fieldX, fieldY } = electricFieldAt(x, y);
+      const magnitude = Math.hypot(fieldX, fieldY);
       if (magnitude < 0.0001) break;
 
-      x += direction * (ex / magnitude) * STREAM_STEP;
-      y += direction * (ey / magnitude) * STREAM_STEP;
+      x += direction * (fieldX / magnitude) * STREAM_STEP;
+      y += direction * (fieldY / magnitude) * STREAM_STEP;
 
       if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) break;
       ctx.lineTo(x, y);
@@ -605,23 +624,23 @@
       const strokeStyle = particle.charge > 0 ? `${palette.positive}cc` : `${palette.negative}cc`;
       for (let i = 0; i < STREAM_SEEDS; i++) {
         const angle = (Math.PI * 2 * i) / STREAM_SEEDS;
-        const seedX = particle.x + Math.cos(angle) * (particle.r + 6);
-        const seedY = particle.y + Math.sin(angle) * (particle.r + 6);
+        const seedX = particle.x + Math.cos(angle) * (particle.r + FIELD_LINE_SEED_OFFSET);
+        const seedY = particle.y + Math.sin(angle) * (particle.r + FIELD_LINE_SEED_OFFSET);
         traceFieldLine(seedX, seedY, direction, strokeStyle);
       }
     }
 
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    for (let x = FIELD_STEP / 2; x < canvas.width; x += FIELD_STEP) {
-      for (let y = FIELD_STEP / 2; y < canvas.height; y += FIELD_STEP) {
-        const { ex, ey } = electricFieldAt(x, y);
-        const magnitude = Math.hypot(ex, ey);
+    for (let x = FIELD_ARROW_GRID_STEP / 2; x < canvas.width; x += FIELD_ARROW_GRID_STEP) {
+      for (let y = FIELD_ARROW_GRID_STEP / 2; y < canvas.height; y += FIELD_ARROW_GRID_STEP) {
+        const { fieldX, fieldY } = electricFieldAt(x, y);
+        const magnitude = Math.hypot(fieldX, fieldY);
         if (magnitude < 0.0001) continue;
-        const ux = ex / magnitude;
-        const uy = ey / magnitude;
+        const unitX = fieldX / magnitude;
+        const unitY = fieldY / magnitude;
         ctx.beginPath();
-        ctx.moveTo(x - ux * 6, y - uy * 6);
-        ctx.lineTo(x + ux * 6, y + uy * 6);
+        ctx.moveTo(x - unitX * FIELD_ARROW_HALF_LENGTH, y - unitY * FIELD_ARROW_HALF_LENGTH);
+        ctx.lineTo(x + unitX * FIELD_ARROW_HALF_LENGTH, y + unitY * FIELD_ARROW_HALF_LENGTH);
         ctx.stroke();
       }
     }
@@ -683,7 +702,7 @@
       }
 
       ctx.fillStyle = '#f4f7fb';
-      ctx.font = 'bold 12px Segoe UI';
+      ctx.font = 'bold 12px "Segoe UI"';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(formatCharge(particle.charge), particle.x, particle.y);
@@ -719,12 +738,12 @@
 
     const positive = makeParticle(cx - 120, cy, 3.8, 4.2);
     const negative = makeParticle(cx + 120, cy, 3.4, -4.1);
-    const neutral = makeParticle(cx, cy - 90, 2.4, 1.8);
+    const weakPositive = makeParticle(cx, cy - 90, 2.4, 1.8);
     positive.pinned = true;
     negative.pinned = true;
 
-    particles = [positive, negative, neutral];
-    setSelectedParticle(neutral);
+    particles = [positive, negative, weakPositive];
+    setSelectedParticle(weakPositive);
   }
 
   updateEditorValues();
