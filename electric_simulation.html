@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elektrosztatikus Töltés Szimuláció</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div id="controls">
+  <h2>⚡ Töltések dinamikája</h2>
+
+  <div class="section">
+    <h3>Részecskék</h3>
+    <div class="btn-group">
+      <button class="btn-neutral" id="btnMove">✋ Részecskék mozgatása</button>
+      <button class="btn-add" id="btnAdd">➕ Részecske hozzáadása</button>
+      <button class="btn-delete" id="btnDelete">🗑️ Részecske törlése</button>
+      <button class="btn-pin" id="btnPin">📌 Részecske rögzítése</button>
+    </div>
+
+    <div class="slider-row mt-10">
+      <div class="slider-label">
+        <span>Tömeg</span>
+        <span id="massVal">2.0</span>
+      </div>
+      <input type="range" id="massInput" min="0.5" max="8" step="0.1" value="2" />
+    </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Töltés</span>
+        <span id="chargeVal">+2.0</span>
+      </div>
+      <input type="range" id="chargeInput" min="-5" max="5" step="0.1" value="2" />
+    </div>
+
+    <p class="control-note mt-8">A csúszkák az új részecskékre érvényesek, és a kijelölt részecskét is azonnal frissítik.</p>
+  </div>
+
+  <div class="section">
+    <h3>Mező megjelenítése</h3>
+
+    <div class="slider-row">
+      <div class="slider-label">
+        <span>Háttér mód</span>
+      </div>
+      <select id="backgroundMode">
+        <option value="field">Erővonalak</option>
+        <option value="equipotential">Potenciál szintvonalak</option>
+        <option value="potential">Potenciál nagysága</option>
+      </select>
+    </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Színkód</span>
+      </div>
+      <select id="colorScheme">
+        <option value="forest">Pozitív: sárga / negatív: sötétzöld</option>
+        <option value="classic">Pozitív: piros / negatív: sötétkék</option>
+      </select>
+    </div>
+
+    <div class="slider-row mt-10">
+      <div class="slider-label">
+        <span>Coulomb-erő</span>
+        <span id="forceVal">140</span>
+      </div>
+      <input type="range" id="forceInput" min="20" max="300" step="5" value="140" />
+    </div>
+
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Csillapítás</span>
+        <span id="dampingVal">0.992</span>
+      </div>
+      <input type="range" id="dampingInput" min="0.94" max="0.999" step="0.001" value="0.992" />
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Szimuláció</h3>
+    <div class="button-row">
+      <button class="btn-neutral" id="btnPause">⏸️ Szünet</button>
+      <button class="btn-neutral" id="btnReset">🔄 Reset</button>
+    </div>
+  </div>
+
+  <div id="status">Mozgasd a részecskéket, vagy adj hozzá új töltéseket a vásznon.</div>
+  <p id="hint">A háttér a mezőt, a szintvonalakat vagy a potenciál nagyságát mutathatja.</p>
+</div>
+
+<div id="canvas-container">
+  <canvas id="canvas"></canvas>
+</div>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const container = document.getElementById('canvas-container');
+
+  function resize() {
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+
+  const statusEl = document.getElementById('status');
+  const btnMove = document.getElementById('btnMove');
+  const btnAdd = document.getElementById('btnAdd');
+  const btnDelete = document.getElementById('btnDelete');
+  const btnPin = document.getElementById('btnPin');
+  const btnPause = document.getElementById('btnPause');
+  const btnReset = document.getElementById('btnReset');
+  const massInput = document.getElementById('massInput');
+  const massVal = document.getElementById('massVal');
+  const chargeInput = document.getElementById('chargeInput');
+  const chargeVal = document.getElementById('chargeVal');
+  const backgroundModeInput = document.getElementById('backgroundMode');
+  const colorSchemeInput = document.getElementById('colorScheme');
+  const forceInput = document.getElementById('forceInput');
+  const forceVal = document.getElementById('forceVal');
+  const dampingInput = document.getElementById('dampingInput');
+  const dampingVal = document.getElementById('dampingVal');
+
+  const modeButtons = [btnMove, btnAdd, btnDelete, btnPin];
+  const PALETTES = {
+    forest: { positive: '#f4e04d', negative: '#0b6e4f', neutral: '#b0bec5' },
+    classic: { positive: '#ff5252', negative: '#0b3d91', neutral: '#b0bec5' }
+  };
+  const EPSILON = 600;
+  const MAX_FORCE = 3.5;
+  const INTERPOLATION_EPSILON = 1e-6;
+  const MIN_PARTICLE_MASS = 0.1;
+  const WALL_BOUNCE_COEFFICIENT = 0.7;
+  const FIELD_LINE_SEED_OFFSET = 6;
+  const FIELD_ARROW_HALF_LENGTH = 6;
+  const POTENTIAL_MAP_HUE_START = 225;
+  const POTENTIAL_MAP_HUE_RANGE = 165;
+  const POTENTIAL_MAP_LIGHTNESS_MIN = 12;
+  const POTENTIAL_MAP_LIGHTNESS_RANGE = 55;
+  // Visual density controls for the three background renderers.
+  const FIELD_ARROW_GRID_STEP = 34;
+  const POTENTIAL_MAP_GRID_STEP = 26;
+  const EQUIPOTENTIAL_GRID_STEP = 36;
+  const CONTOUR_LEVEL_FACTORS = [-0.72, -0.45, -0.22, 0.22, 0.45, 0.72];
+  const STREAM_STEP = 9;
+  const STREAM_STEPS = 110;
+  const STREAM_SEEDS = 12;
+  const MARCHING_SQUARE_CASES = {
+    1: [['left', 'bottom']],
+    2: [['bottom', 'right']],
+    3: [['left', 'right']],
+    4: [['top', 'right']],
+    5: [['top', 'left'], ['bottom', 'right']],
+    6: [['top', 'bottom']],
+    7: [['top', 'left']],
+    8: [['left', 'top']],
+    9: [['top', 'bottom']],
+    10: [['top', 'right'], ['left', 'bottom']],
+    11: [['top', 'right']],
+    12: [['left', 'right']],
+    13: [['bottom', 'right']],
+    14: [['left', 'bottom']]
+  };
+
+  let particles = [];
+  let paused = false;
+  let mode = 'move';
+  let dragged = null;
+  let selectedParticle = null;
+  let dragOffX = 0;
+  let dragOffY = 0;
+  let nextParticleMass = 2;
+  let nextParticleCharge = 2;
+  let fieldStrength = 140;
+  let damping = 0.992;
+  let backgroundMode = 'field';
+  let colorScheme = 'forest';
+  let nextParticleId = 1;
+
+  function radiusForMass(mass) {
+    return 9 + Math.sqrt(mass) * 4;
+  }
+
+  function formatCharge(value) {
+    return `${value >= 0 ? '+' : ''}${value.toFixed(1)}`;
+  }
+
+  function getPalette() {
+    return PALETTES[colorScheme] || PALETTES.forest;
+  }
+
+  function updateParticleAppearance(particle) {
+    particle.r = radiusForMass(particle.mass);
+  }
+
+  function particleColor(particle) {
+    const palette = getPalette();
+    if (Math.abs(particle.charge) < 0.05) return palette.neutral;
+    return particle.charge > 0 ? palette.positive : palette.negative;
+  }
+
+  function makeParticle(x, y, mass = nextParticleMass, charge = nextParticleCharge) {
+    const particle = {
+      id: nextParticleId++,
+      x,
+      y,
+      vx: 0,
+      vy: 0,
+      mass,
+      charge,
+      pinned: false,
+      r: radiusForMass(mass)
+    };
+    return particle;
+  }
+
+  function updateEditorValues() {
+    massVal.textContent = nextParticleMass.toFixed(1);
+    chargeVal.textContent = formatCharge(nextParticleCharge);
+    forceVal.textContent = Math.round(fieldStrength);
+    dampingVal.textContent = damping.toFixed(3);
+  }
+
+  function syncControlsToSelectedParticle() {
+    if (!selectedParticle) return;
+    nextParticleMass = selectedParticle.mass;
+    nextParticleCharge = selectedParticle.charge;
+    massInput.value = String(nextParticleMass);
+    chargeInput.value = String(nextParticleCharge);
+    updateEditorValues();
+  }
+
+  function setSelectedParticle(particle) {
+    selectedParticle = particle || null;
+    if (selectedParticle) {
+      syncControlsToSelectedParticle();
+      statusEl.textContent = `Kijelölt részecske: m=${selectedParticle.mass.toFixed(1)}, q=${formatCharge(selectedParticle.charge)}.`;
+    }
+  }
+
+  function applyEditorToSelectedParticle() {
+    if (!selectedParticle) return;
+    selectedParticle.mass = nextParticleMass;
+    selectedParticle.charge = nextParticleCharge;
+    updateParticleAppearance(selectedParticle);
+  }
+
+  function setMode(nextMode) {
+    mode = nextMode;
+    modeButtons.forEach(button => {
+      button.classList.remove('active');
+      button.setAttribute('aria-pressed', 'false');
+    });
+
+    const configs = {
+      move: { button: btnMove, cursor: 'grab', text: 'Fogd meg és mozgasd a részecskéket.' },
+      add: { button: btnAdd, cursor: 'crosshair', text: 'Kattints a vászonra új részecske hozzáadásához.' },
+      delete: { button: btnDelete, cursor: 'pointer', text: 'Kattints egy részecskére a törléséhez.' },
+      pin: { button: btnPin, cursor: 'pointer', text: 'Kattints egy részecskére a rögzítéshez vagy feloldáshoz.' }
+    };
+
+    const config = configs[nextMode];
+    config.button.classList.add('active');
+    config.button.setAttribute('aria-pressed', 'true');
+    canvas.style.cursor = config.cursor;
+    statusEl.textContent = config.text;
+  }
+
+  btnMove.addEventListener('click', () => setMode('move'));
+  btnAdd.addEventListener('click', () => setMode('add'));
+  btnDelete.addEventListener('click', () => setMode(mode === 'delete' ? 'move' : 'delete'));
+  btnPin.addEventListener('click', () => setMode(mode === 'pin' ? 'move' : 'pin'));
+
+  btnPause.addEventListener('click', () => {
+    paused = !paused;
+    btnPause.textContent = paused ? '▶️ Folytatás' : '⏸️ Szünet';
+  });
+
+  btnReset.addEventListener('click', () => {
+    particles = [];
+    dragged = null;
+    selectedParticle = null;
+    paused = false;
+    btnPause.textContent = '⏸️ Szünet';
+    initDemo();
+    setMode('move');
+  });
+
+  massInput.addEventListener('input', () => {
+    nextParticleMass = parseFloat(massInput.value);
+    updateEditorValues();
+    applyEditorToSelectedParticle();
+  });
+
+  chargeInput.addEventListener('input', () => {
+    nextParticleCharge = parseFloat(chargeInput.value);
+    updateEditorValues();
+    applyEditorToSelectedParticle();
+  });
+
+  backgroundModeInput.addEventListener('change', () => {
+    backgroundMode = backgroundModeInput.value;
+  });
+
+  colorSchemeInput.addEventListener('change', () => {
+    colorScheme = colorSchemeInput.value;
+  });
+
+  forceInput.addEventListener('input', () => {
+    fieldStrength = parseFloat(forceInput.value);
+    updateEditorValues();
+  });
+
+  dampingInput.addEventListener('input', () => {
+    damping = parseFloat(dampingInput.value);
+    updateEditorValues();
+  });
+
+  function getPos(event) {
+    const rect = canvas.getBoundingClientRect();
+    if (event.touches) {
+      return {
+        x: event.touches[0].clientX - rect.left,
+        y: event.touches[0].clientY - rect.top
+      };
+    }
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  function particleAt(x, y) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const particle = particles[i];
+      const dx = particle.x - x;
+      const dy = particle.y - y;
+      if (dx * dx + dy * dy <= particle.r * particle.r) return particle;
+    }
+    return null;
+  }
+
+  function onPointerDown(event) {
+    event.preventDefault();
+    const { x, y } = getPos(event);
+    const hit = particleAt(x, y);
+
+    if (mode === 'add' && !hit) {
+      const particle = makeParticle(x, y);
+      particles.push(particle);
+      setSelectedParticle(particle);
+      statusEl.textContent = `Új részecske hozzáadva: m=${particle.mass.toFixed(1)}, q=${formatCharge(particle.charge)}.`;
+      return;
+    }
+
+    if (mode === 'delete' && hit) {
+      particles = particles.filter(particle => particle !== hit);
+      if (selectedParticle === hit) {
+        selectedParticle = null;
+      }
+      statusEl.textContent = 'Részecske törölve.';
+      return;
+    }
+
+    if (mode === 'pin' && hit) {
+      hit.pinned = !hit.pinned;
+      if (hit.pinned) {
+        hit.vx = 0;
+        hit.vy = 0;
+      }
+      setSelectedParticle(hit);
+      statusEl.textContent = hit.pinned ? 'Részecske rögzítve.' : 'Részecske feloldva.';
+      return;
+    }
+
+    if (hit) {
+      setSelectedParticle(hit);
+    }
+
+    if (mode === 'move' && hit) {
+      dragged = hit;
+      dragOffX = hit.x - x;
+      dragOffY = hit.y - y;
+      canvas.style.cursor = 'grabbing';
+    }
+  }
+
+  function onPointerMove(event) {
+    event.preventDefault();
+    if (!dragged) return;
+    const { x, y } = getPos(event);
+    dragged.x = x + dragOffX;
+    dragged.y = y + dragOffY;
+    dragged.vx = 0;
+    dragged.vy = 0;
+  }
+
+  function onPointerUp() {
+    dragged = null;
+    if (mode === 'move') canvas.style.cursor = 'grab';
+  }
+
+  canvas.addEventListener('mousedown', onPointerDown);
+  canvas.addEventListener('mousemove', onPointerMove);
+  canvas.addEventListener('mouseup', onPointerUp);
+  canvas.addEventListener('mouseleave', onPointerUp);
+  canvas.addEventListener('touchstart', onPointerDown, { passive: false });
+  canvas.addEventListener('touchmove', onPointerMove, { passive: false });
+  canvas.addEventListener('touchend', onPointerUp);
+
+  function potentialAt(x, y) {
+    let potential = 0;
+    for (const particle of particles) {
+      const dx = x - particle.x;
+      const dy = y - particle.y;
+      const dist = Math.sqrt(dx * dx + dy * dy + EPSILON);
+      potential += fieldStrength * particle.charge / dist;
+    }
+    return potential;
+  }
+
+  function electricFieldAt(x, y) {
+    let fieldX = 0;
+    let fieldY = 0;
+    for (const particle of particles) {
+      const deltaX = x - particle.x;
+      const deltaY = y - particle.y;
+      const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
+      const dist = Math.sqrt(distSq);
+      const scale = fieldStrength * particle.charge / (distSq * dist);
+      fieldX += deltaX * scale;
+      fieldY += deltaY * scale;
+    }
+    return { fieldX, fieldY };
+  }
+
+  function step() {
+    if (paused) return;
+
+    for (let i = 0; i < particles.length; i++) {
+      const currentParticle = particles[i];
+      if (currentParticle.pinned || currentParticle === dragged) continue;
+
+      let accelerationX = 0;
+      let accelerationY = 0;
+      for (let j = 0; j < particles.length; j++) {
+        if (i === j) continue;
+        const otherParticle = particles[j];
+        const deltaX = currentParticle.x - otherParticle.x;
+        const deltaY = currentParticle.y - otherParticle.y;
+        const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
+        const dist = Math.sqrt(distSq);
+        const rawForce = fieldStrength * currentParticle.charge * otherParticle.charge / distSq;
+        const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
+        accelerationX += (force * deltaX / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
+        accelerationY += (force * deltaY / dist) / Math.max(currentParticle.mass, MIN_PARTICLE_MASS);
+      }
+
+      currentParticle.vx = (currentParticle.vx + accelerationX) * damping;
+      currentParticle.vy = (currentParticle.vy + accelerationY) * damping;
+    }
+
+    for (const particle of particles) {
+      if (particle.pinned || particle === dragged) continue;
+      particle.x += particle.vx;
+      particle.y += particle.vy;
+
+      if (particle.x - particle.r < 0) {
+        particle.x = particle.r;
+        particle.vx *= -WALL_BOUNCE_COEFFICIENT;
+      }
+      if (particle.x + particle.r > canvas.width) {
+        particle.x = canvas.width - particle.r;
+        particle.vx *= -WALL_BOUNCE_COEFFICIENT;
+      }
+      if (particle.y - particle.r < 0) {
+        particle.y = particle.r;
+        particle.vy *= -WALL_BOUNCE_COEFFICIENT;
+      }
+      if (particle.y + particle.r > canvas.height) {
+        particle.y = canvas.height - particle.r;
+        particle.vy *= -WALL_BOUNCE_COEFFICIENT;
+      }
+    }
+  }
+
+  function drawPotentialMap() {
+    const samples = [];
+    let maxMagnitude = 0;
+
+    for (let x = POTENTIAL_MAP_GRID_STEP / 2; x < canvas.width; x += POTENTIAL_MAP_GRID_STEP) {
+      for (let y = POTENTIAL_MAP_GRID_STEP / 2; y < canvas.height; y += POTENTIAL_MAP_GRID_STEP) {
+        const magnitude = Math.abs(potentialAt(x, y));
+        samples.push({ x, y, magnitude });
+        if (magnitude > maxMagnitude) maxMagnitude = magnitude;
+      }
+    }
+
+    const scale = maxMagnitude || 1;
+    for (const sample of samples) {
+      const t = Math.min(1, sample.magnitude / scale);
+      const hue = POTENTIAL_MAP_HUE_START - t * POTENTIAL_MAP_HUE_RANGE;
+      const lightness = POTENTIAL_MAP_LIGHTNESS_MIN + t * POTENTIAL_MAP_LIGHTNESS_RANGE;
+      ctx.fillStyle = `hsla(${hue}, 75%, ${lightness}%, 0.58)`;
+      ctx.fillRect(
+        sample.x - POTENTIAL_MAP_GRID_STEP / 2,
+        sample.y - POTENTIAL_MAP_GRID_STEP / 2,
+        POTENTIAL_MAP_GRID_STEP,
+        POTENTIAL_MAP_GRID_STEP
+      );
+    }
+  }
+
+  function marchingSquareSegments(index, edges) {
+    return (MARCHING_SQUARE_CASES[index] || []).map(([a, b]) => [edges[a], edges[b]]);
+  }
+
+  function interpolatePoint(x1, y1, v1, x2, y2, v2, level) {
+    const interpolationRatio = Math.abs(v2 - v1) < INTERPOLATION_EPSILON ? 0.5 : (level - v1) / (v2 - v1);
+    const clampedRatio = Math.max(0, Math.min(1, interpolationRatio));
+    return {
+      x: x1 + (x2 - x1) * clampedRatio,
+      y: y1 + (y2 - y1) * clampedRatio
+    };
+  }
+
+  function drawEquipotentialLines() {
+    const cols = Math.ceil(canvas.width / EQUIPOTENTIAL_GRID_STEP);
+    const rows = Math.ceil(canvas.height / EQUIPOTENTIAL_GRID_STEP);
+    const field = Array.from({ length: cols + 1 }, () => Array(rows + 1).fill(0));
+    let maxAbs = 0;
+
+    for (let ix = 0; ix <= cols; ix++) {
+      for (let iy = 0; iy <= rows; iy++) {
+        const value = potentialAt(ix * EQUIPOTENTIAL_GRID_STEP, iy * EQUIPOTENTIAL_GRID_STEP);
+        field[ix][iy] = value;
+        maxAbs = Math.max(maxAbs, Math.abs(value));
+      }
+    }
+
+    const levels = CONTOUR_LEVEL_FACTORS
+      .map(factor => factor * (maxAbs || 1))
+      .filter(level => Math.abs(level) > 0.01);
+
+    for (const level of levels) {
+      ctx.beginPath();
+      ctx.strokeStyle = level > 0 ? 'rgba(255, 191, 145, 0.8)' : 'rgba(120, 196, 255, 0.8)';
+      ctx.lineWidth = 1.4;
+
+      for (let ix = 0; ix < cols; ix++) {
+        for (let iy = 0; iy < rows; iy++) {
+          const x = ix * EQUIPOTENTIAL_GRID_STEP;
+          const y = iy * EQUIPOTENTIAL_GRID_STEP;
+          const vTL = field[ix][iy];
+          const vTR = field[ix + 1][iy];
+          const vBR = field[ix + 1][iy + 1];
+          const vBL = field[ix][iy + 1];
+
+          const edges = {
+            top: interpolatePoint(x, y, vTL, x + EQUIPOTENTIAL_GRID_STEP, y, vTR, level),
+            right: interpolatePoint(x + EQUIPOTENTIAL_GRID_STEP, y, vTR, x + EQUIPOTENTIAL_GRID_STEP, y + EQUIPOTENTIAL_GRID_STEP, vBR, level),
+            bottom: interpolatePoint(x, y + EQUIPOTENTIAL_GRID_STEP, vBL, x + EQUIPOTENTIAL_GRID_STEP, y + EQUIPOTENTIAL_GRID_STEP, vBR, level),
+            left: interpolatePoint(x, y, vTL, x, y + EQUIPOTENTIAL_GRID_STEP, vBL, level)
+          };
+
+          let index = 0;
+          if (vTL >= level) index |= 8;
+          if (vTR >= level) index |= 4;
+          if (vBR >= level) index |= 2;
+          if (vBL >= level) index |= 1;
+
+          const segments = marchingSquareSegments(index, edges);
+          for (const [start, end] of segments) {
+            ctx.moveTo(start.x, start.y);
+            ctx.lineTo(end.x, end.y);
+          }
+        }
+      }
+
+      ctx.stroke();
+    }
+  }
+
+  function traceFieldLine(seedX, seedY, direction, strokeStyle) {
+    let x = seedX;
+    let y = seedY;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+
+    for (let stepIndex = 0; stepIndex < STREAM_STEPS; stepIndex++) {
+      const { fieldX, fieldY } = electricFieldAt(x, y);
+      const magnitude = Math.hypot(fieldX, fieldY);
+      if (magnitude < 0.0001) break;
+
+      x += direction * (fieldX / magnitude) * STREAM_STEP;
+      y += direction * (fieldY / magnitude) * STREAM_STEP;
+
+      if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) break;
+      ctx.lineTo(x, y);
+
+      const nearParticle = particles.find(particle => {
+        const dx = particle.x - x;
+        const dy = particle.y - y;
+        return dx * dx + dy * dy < (particle.r + 2) * (particle.r + 2);
+      });
+      if (nearParticle) break;
+    }
+
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = 1.15;
+    ctx.stroke();
+  }
+
+  function drawFieldLines() {
+    if (particles.length === 0) return;
+    const palette = getPalette();
+    for (const particle of particles) {
+      if (Math.abs(particle.charge) < 0.05) continue;
+      const direction = particle.charge > 0 ? 1 : -1;
+      const strokeStyle = particle.charge > 0 ? `${palette.positive}cc` : `${palette.negative}cc`;
+      for (let i = 0; i < STREAM_SEEDS; i++) {
+        const angle = (Math.PI * 2 * i) / STREAM_SEEDS;
+        const seedX = particle.x + Math.cos(angle) * (particle.r + FIELD_LINE_SEED_OFFSET);
+        const seedY = particle.y + Math.sin(angle) * (particle.r + FIELD_LINE_SEED_OFFSET);
+        traceFieldLine(seedX, seedY, direction, strokeStyle);
+      }
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    for (let x = FIELD_ARROW_GRID_STEP / 2; x < canvas.width; x += FIELD_ARROW_GRID_STEP) {
+      for (let y = FIELD_ARROW_GRID_STEP / 2; y < canvas.height; y += FIELD_ARROW_GRID_STEP) {
+        const { fieldX, fieldY } = electricFieldAt(x, y);
+        const magnitude = Math.hypot(fieldX, fieldY);
+        if (magnitude < 0.0001) continue;
+        const unitX = fieldX / magnitude;
+        const unitY = fieldY / magnitude;
+        ctx.beginPath();
+        ctx.moveTo(x - unitX * FIELD_ARROW_HALF_LENGTH, y - unitY * FIELD_ARROW_HALF_LENGTH);
+        ctx.lineTo(x + unitX * FIELD_ARROW_HALF_LENGTH, y + unitY * FIELD_ARROW_HALF_LENGTH);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawBackground() {
+    ctx.fillStyle = '#0d1b2a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (particles.length === 0) return;
+
+    if (backgroundMode === 'potential') {
+      drawPotentialMap();
+    } else if (backgroundMode === 'equipotential') {
+      drawEquipotentialLines();
+    } else {
+      drawFieldLines();
+    }
+  }
+
+  function drawParticles() {
+    for (const particle of particles) {
+      const color = particleColor(particle);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(particle.x, particle.y, particle.r, 0, Math.PI * 2);
+
+      if (particle.pinned) {
+        ctx.fillStyle = '#75889a';
+      } else {
+        const gradient = ctx.createRadialGradient(
+          particle.x - particle.r * 0.35,
+          particle.y - particle.r * 0.35,
+          2,
+          particle.x,
+          particle.y,
+          particle.r
+        );
+        gradient.addColorStop(0, '#ffffffaa');
+        gradient.addColorStop(1, color);
+        ctx.fillStyle = gradient;
+      }
+
+      ctx.fill();
+      ctx.lineWidth = selectedParticle === particle ? 3 : 1.8;
+      ctx.strokeStyle = selectedParticle === particle ? '#ffffff' : color;
+      ctx.stroke();
+
+      if (particle.pinned) {
+        ctx.beginPath();
+        ctx.moveTo(particle.x - 5, particle.y - 5);
+        ctx.lineTo(particle.x + 5, particle.y + 5);
+        ctx.moveTo(particle.x + 5, particle.y - 5);
+        ctx.lineTo(particle.x - 5, particle.y + 5);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#f4f7fb';
+      ctx.font = 'bold 12px "Segoe UI"';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(formatCharge(particle.charge), particle.x, particle.y);
+
+      if (particle === dragged) {
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.arc(particle.x, particle.y, particle.r + 5, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+
+  function draw() {
+    drawBackground();
+    drawParticles();
+  }
+
+  const SUBSTEPS = 2;
+  function loop() {
+    for (let i = 0; i < SUBSTEPS; i++) step();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  function initDemo() {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    const positive = makeParticle(cx - 120, cy, 3.8, 4.2);
+    const negative = makeParticle(cx + 120, cy, 3.4, -4.1);
+    const weakPositive = makeParticle(cx, cy - 90, 2.4, 1.8);
+    positive.pinned = true;
+    negative.pinned = true;
+
+    particles = [positive, negative, weakPositive];
+    setSelectedParticle(weakPositive);
+  }
+
+  updateEditorValues();
+  initDemo();
+  setMode('move');
+  loop();
+</script>
+</body>
+</html>
