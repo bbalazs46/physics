@@ -358,14 +358,39 @@
     return cachedWallChargeSamples;
   }
 
+  function usesInverseDistanceRepulsion(chargeProduct) {
+    return inverseDistanceRepulsionEnabled && chargeProduct > 0;
+  }
+
+  function interactionForceMagnitude(chargeProduct, distSq, dist) {
+    return fieldStrength * chargeProduct / (usesInverseDistanceRepulsion(chargeProduct) ? dist : distSq);
+  }
+
+  // With the softened 1/r repulsion, the radial force is proportional to r / (r² + ε),
+  // so its matching potential is the negative logarithm of sqrt(r² + ε), not a +1/r term.
+  function interactionPotentialEnergy(chargeProduct, dist) {
+    return usesInverseDistanceRepulsion(chargeProduct)
+      ? -fieldStrength * chargeProduct * Math.log(dist)
+      : fieldStrength * chargeProduct / dist;
+  }
+
+  function positiveTestPotential(sourceCharge, dist) {
+    return inverseDistanceRepulsionEnabled && sourceCharge > 0
+      ? -fieldStrength * sourceCharge * Math.log(dist)
+      : fieldStrength * sourceCharge / dist;
+  }
+
+  function positiveTestFieldScale(sourceCharge, distSq, dist) {
+    return fieldStrength * sourceCharge / (inverseDistanceRepulsionEnabled && sourceCharge > 0 ? distSq : distSq * dist);
+  }
+
   function applyChargeAcceleration(targetParticle, sourceX, sourceY, sourceCharge, acceleration) {
     const deltaX = targetParticle.x - sourceX;
     const deltaY = targetParticle.y - sourceY;
     const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
     const dist = Math.sqrt(distSq);
     const chargeProduct = targetParticle.charge * sourceCharge;
-    const denominator = inverseDistanceRepulsionEnabled && chargeProduct > 0 ? dist : distSq;
-    const rawForce = fieldStrength * chargeProduct / denominator;
+    const rawForce = interactionForceMagnitude(chargeProduct, distSq, dist);
     const force = Math.max(-MAX_FORCE, Math.min(MAX_FORCE, rawForce));
     const safeMass = Math.max(targetParticle.mass, MIN_PARTICLE_MASS);
     acceleration.x += (force * deltaX / dist) / safeMass;
@@ -545,14 +570,14 @@
         const deltaX = particle.x - otherParticle.x;
         const deltaY = particle.y - otherParticle.y;
         const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY + EPSILON);
-        potentialEnergy += fieldStrength * particle.charge * otherParticle.charge / dist;
+        potentialEnergy += interactionPotentialEnergy(particle.charge * otherParticle.charge, dist);
       }
 
       for (const wallSample of getWallChargeSamples()) {
         const deltaX = particle.x - wallSample.x;
         const deltaY = particle.y - wallSample.y;
         const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY + EPSILON);
-        potentialEnergy += fieldStrength * particle.charge * wallSample.charge / dist;
+        potentialEnergy += interactionPotentialEnergy(particle.charge * wallSample.charge, dist);
       }
     }
 
@@ -866,13 +891,13 @@
       const dx = x - particle.x;
       const dy = y - particle.y;
       const dist = Math.sqrt(dx * dx + dy * dy + EPSILON);
-      potential += fieldStrength * particle.charge / dist;
+      potential += positiveTestPotential(particle.charge, dist);
     }
     for (const wallSample of getWallChargeSamples()) {
       const dx = x - wallSample.x;
       const dy = y - wallSample.y;
       const dist = Math.sqrt(dx * dx + dy * dy + EPSILON);
-      potential += fieldStrength * wallSample.charge / dist;
+      potential += positiveTestPotential(wallSample.charge, dist);
     }
     return potential;
   }
@@ -885,7 +910,7 @@
       const deltaY = y - particle.y;
       const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
       const dist = Math.sqrt(distSq);
-      const scale = fieldStrength * particle.charge / (distSq * dist);
+      const scale = positiveTestFieldScale(particle.charge, distSq, dist);
       fieldX += deltaX * scale;
       fieldY += deltaY * scale;
     }
@@ -894,7 +919,7 @@
       const deltaY = y - wallSample.y;
       const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
       const dist = Math.sqrt(distSq);
-      const scale = fieldStrength * wallSample.charge / (distSq * dist);
+      const scale = positiveTestFieldScale(wallSample.charge, distSq, dist);
       fieldX += deltaX * scale;
       fieldY += deltaY * scale;
     }
