@@ -4,166 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Rugó-Labda Szimuláció</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #1a1a2e;
-      color: #e0e0e0;
-      display: flex;
-      height: 100vh;
-      overflow: hidden;
-    }
-
-    #controls {
-      width: 260px;
-      min-width: 260px;
-      background: #16213e;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      overflow-y: auto;
-      border-right: 2px solid #0f3460;
-    }
-
-    #controls h2 {
-      color: #e94560;
-      font-size: 1.1rem;
-      text-align: center;
-      margin-bottom: 4px;
-    }
-
-    .section {
-      background: #0f3460;
-      border-radius: 8px;
-      padding: 10px 12px;
-    }
-
-    .section h3 {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #a0c4ff;
-      margin-bottom: 8px;
-    }
-
-    .btn-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    button {
-      padding: 8px 12px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.85rem;
-      font-weight: 600;
-      transition: background 0.15s, transform 0.1s, box-shadow 0.15s, outline-color 0.15s;
-    }
-
-    button:active { transform: scale(0.97); }
-
-    button.active {
-      transform: scale(1.01);
-      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35), 0 0 18px var(--active-glow, rgba(255, 255, 255, 0.55));
-      outline: 3px solid var(--active-outline, #fff);
-      outline-offset: 1px;
-      filter: brightness(1.12);
-    }
-
-    .btn-add    { background: #4caf50; color: #fff; --active-outline: #c8e6c9; --active-glow: rgba(76, 175, 80, 0.7); }
-    .btn-add:hover { background: #43a047; }
-    .btn-add.active { background: #2e7d32; }
-
-    .btn-delete { background: #e53935; color: #fff; --active-outline: #ff5252; --active-glow: rgba(229, 57, 53, 0.7); }
-    .btn-delete:hover { background: #c62828; }
-    .btn-delete.active { background: #b71c1c; }
-
-    .btn-pin    { background: #fb8c00; color: #fff; --active-outline: #ffab40; --active-glow: rgba(251, 140, 0, 0.75); }
-    .btn-pin:hover { background: #e65100; }
-    .btn-pin.active { background: #bf360c; }
-
-    .btn-spring { background: #7c4dff; color: #fff; --active-outline: #b388ff; --active-glow: rgba(124, 77, 255, 0.75); }
-    .btn-spring:hover { background: #6200ea; }
-    .btn-spring.active { background: #4a148c; }
-
-    .btn-neutral { background: #455a64; color: #fff; --active-outline: #90caf9; --active-glow: rgba(144, 202, 249, 0.65); }
-    .btn-neutral:hover { background: #37474f; }
-    .btn-neutral.active { background: #263238; }
-
-    .toggle-btn {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .toggle-btn input[type=checkbox] {
-      width: 16px; height: 16px; cursor: pointer;
-    }
-
-    label { font-size: 0.85rem; }
-
-    .slider-row {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .slider-row .slider-label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.82rem;
-    }
-
-    input[type=range] {
-      width: 100%;
-      accent-color: #e94560;
-      cursor: pointer;
-    }
-
-    #status {
-      font-size: 0.78rem;
-      color: #a0c4ff;
-      min-height: 32px;
-      background: #0a1128;
-      border-radius: 6px;
-      padding: 6px 8px;
-      line-height: 1.4;
-    }
-
-    #hint {
-      font-size: 0.75rem;
-      color: #7986cb;
-      text-align: center;
-    }
-
-    #canvas-container {
-      flex: 1;
-      position: relative;
-      overflow: hidden;
-    }
-
-    canvas {
-      display: block;
-      background: #0d1b2a;
-      cursor: crosshair;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      button {
-        transition: background 0.15s, box-shadow 0.15s, outline-color 0.15s;
-      }
-
-      button:active,
-      button.active {
-        transform: none;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
@@ -186,22 +27,22 @@
       <button class="btn-spring"  id="btnSpring">🔗 Rugó hozzáadása</button>
       <button class="btn-neutral" id="btnClear">🧹 Összes rugó törlése</button>
     </div>
-    <div class="toggle-btn" style="margin-top:10px">
+    <div class="toggle-btn mt-10">
       <input type="checkbox" id="springStraight" checked />
       <label for="springStraight">Egyenes rugók</label>
     </div>
-    <div class="toggle-btn" style="margin-top:8px">
+    <div class="toggle-btn mt-8">
       <input type="checkbox" id="springZeroRest" checked />
       <label for="springZeroRest">Nulla nyugalmi hossz minden rugónál</label>
     </div>
-    <div class="slider-row" style="margin-top:10px">
+    <div class="slider-row mt-10">
       <div class="slider-label">
         <span>Rugó erőssége</span>
         <span id="springKVal">0.05</span>
       </div>
       <input type="range" id="springK" min="0.001" max="0.3" step="0.001" value="0.05" />
     </div>
-    <div class="slider-row" style="margin-top:8px">
+    <div class="slider-row mt-8">
       <div class="slider-label">
         <span>Csillapítás</span>
         <span id="dampingVal">0.98</span>
@@ -216,7 +57,7 @@
       <input type="checkbox" id="gravityOn" checked />
       <label for="gravityOn">Gravitáció bekapcsolva</label>
     </div>
-    <div class="slider-row" style="margin-top:8px">
+    <div class="slider-row mt-8">
       <div class="slider-label">
         <span>Erőssége</span>
         <span id="gravVal">0.3</span>

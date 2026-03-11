@@ -1,0 +1,204 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-body: #1a1a2e;
+  --bg-panel: #16213e;
+  --bg-section: #0f3460;
+  --bg-status: #0a1128;
+  --border-strong: #0f3460;
+  --text-main: #e0e0e0;
+  --text-accent: #a0c4ff;
+  --text-muted: #7986cb;
+  --heading-accent: #e94560;
+  --canvas-bg: #0d1b2a;
+}
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: var(--bg-body);
+  color: var(--text-main);
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#controls {
+  width: 260px;
+  min-width: 260px;
+  background: var(--bg-panel);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  border-right: 2px solid var(--border-strong);
+}
+
+#controls h2 {
+  color: var(--heading-accent);
+  font-size: 1.1rem;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.section {
+  background: var(--bg-section);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.section h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-accent);
+  margin-bottom: 8px;
+}
+
+.btn-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.button-row {
+  display: flex;
+  gap: 6px;
+}
+
+.button-row > * {
+  flex: 1;
+}
+
+button,
+select {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+button {
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s, outline-color 0.15s;
+}
+
+button:active { transform: scale(0.97); }
+
+button.active {
+  transform: scale(1.01);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35), 0 0 18px var(--active-glow, rgba(255, 255, 255, 0.55));
+  outline: 3px solid var(--active-outline, #fff);
+  outline-offset: 1px;
+  filter: brightness(1.12);
+}
+
+select {
+  width: 100%;
+  background: #102544;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.btn-add    { background: #4caf50; color: #fff; --active-outline: #c8e6c9; --active-glow: rgba(76, 175, 80, 0.7); }
+.btn-add:hover { background: #43a047; }
+.btn-add.active { background: #2e7d32; }
+
+.btn-delete { background: #e53935; color: #fff; --active-outline: #ff5252; --active-glow: rgba(229, 57, 53, 0.7); }
+.btn-delete:hover { background: #c62828; }
+.btn-delete.active { background: #b71c1c; }
+
+.btn-pin    { background: #fb8c00; color: #fff; --active-outline: #ffab40; --active-glow: rgba(251, 140, 0, 0.75); }
+.btn-pin:hover { background: #e65100; }
+.btn-pin.active { background: #bf360c; }
+
+.btn-spring { background: #7c4dff; color: #fff; --active-outline: #b388ff; --active-glow: rgba(124, 77, 255, 0.75); }
+.btn-spring:hover { background: #6200ea; }
+.btn-spring.active { background: #4a148c; }
+
+.btn-neutral { background: #455a64; color: #fff; --active-outline: #90caf9; --active-glow: rgba(144, 202, 249, 0.65); }
+.btn-neutral:hover { background: #37474f; }
+.btn-neutral.active { background: #263238; }
+
+.toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle-btn input[type=checkbox] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+label,
+.control-note {
+  font-size: 0.85rem;
+}
+
+.control-note {
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slider-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+
+input[type=range] {
+  width: 100%;
+  accent-color: var(--heading-accent);
+  cursor: pointer;
+}
+
+#status {
+  font-size: 0.78rem;
+  color: var(--text-accent);
+  min-height: 32px;
+  background: var(--bg-status);
+  border-radius: 6px;
+  padding: 6px 8px;
+  line-height: 1.4;
+}
+
+#hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+#canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  background: var(--canvas-bg);
+  cursor: crosshair;
+}
+
+.mt-8 { margin-top: 8px; }
+.mt-10 { margin-top: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: background 0.15s, box-shadow 0.15s, outline-color 0.15s;
+  }
+
+  button:active,
+  button.active {
+    transform: none;
+  }
+}
