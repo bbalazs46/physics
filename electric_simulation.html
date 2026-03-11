@@ -285,13 +285,13 @@
     return particle.charge > 0 ? palette.positive : palette.negative;
   }
 
-  function makeParticle(x, y, mass = nextParticleMass, charge = nextParticleCharge) {
+  function makeParticle(x, y, mass = nextParticleMass, charge = nextParticleCharge, vx = 0, vy = 0) {
     const particle = {
       id: nextParticleId++,
       x,
       y,
-      vx: 0,
-      vy: 0,
+      vx: vx,
+      vy: vy,
       mass,
       charge,
       pinned: false,
@@ -1045,7 +1045,7 @@
 
     const positive = makeParticle(cx - 120, cy, 3.8, 2);
     const negative = makeParticle(cx + 120, cy, 3.4, -2);
-    const weakPositive = makeParticle(cx, cy - 90, 2.4, 1.8);
+    const weakPositive = makeParticle(cx, cy - 90, 2.4, 2);
     positive.pinned = true;
     negative.pinned = true;
 
