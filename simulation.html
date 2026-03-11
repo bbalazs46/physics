@@ -62,28 +62,38 @@
       cursor: pointer;
       font-size: 0.85rem;
       font-weight: 600;
-      transition: background 0.15s, transform 0.1s;
+      transition: background 0.15s, transform 0.1s, box-shadow 0.15s, outline-color 0.15s;
     }
 
     button:active { transform: scale(0.97); }
 
-    .btn-add    { background: #4caf50; color: #fff; }
+    button.active {
+      transform: scale(1.01);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35), 0 0 18px var(--active-glow, rgba(255, 255, 255, 0.55));
+      outline: 3px solid var(--active-outline, #fff);
+      outline-offset: 1px;
+      filter: brightness(1.12);
+    }
+
+    .btn-add    { background: #4caf50; color: #fff; --active-outline: #c8e6c9; --active-glow: rgba(76, 175, 80, 0.7); }
     .btn-add:hover { background: #43a047; }
+    .btn-add.active { background: #2e7d32; }
 
-    .btn-delete { background: #e53935; color: #fff; }
+    .btn-delete { background: #e53935; color: #fff; --active-outline: #ff5252; --active-glow: rgba(229, 57, 53, 0.7); }
     .btn-delete:hover { background: #c62828; }
-    .btn-delete.active { background: #b71c1c; outline: 2px solid #ff5252; }
+    .btn-delete.active { background: #b71c1c; }
 
-    .btn-pin    { background: #fb8c00; color: #fff; }
+    .btn-pin    { background: #fb8c00; color: #fff; --active-outline: #ffab40; --active-glow: rgba(251, 140, 0, 0.75); }
     .btn-pin:hover { background: #e65100; }
-    .btn-pin.active { background: #bf360c; outline: 2px solid #ffab40; }
+    .btn-pin.active { background: #bf360c; }
 
-    .btn-spring { background: #7c4dff; color: #fff; }
+    .btn-spring { background: #7c4dff; color: #fff; --active-outline: #b388ff; --active-glow: rgba(124, 77, 255, 0.75); }
     .btn-spring:hover { background: #6200ea; }
-    .btn-spring.active { background: #4a148c; outline: 2px solid #b388ff; }
+    .btn-spring.active { background: #4a148c; }
 
-    .btn-neutral { background: #455a64; color: #fff; }
+    .btn-neutral { background: #455a64; color: #fff; --active-outline: #90caf9; --active-glow: rgba(144, 202, 249, 0.65); }
     .btn-neutral:hover { background: #37474f; }
+    .btn-neutral.active { background: #263238; }
 
     .toggle-btn {
       display: flex;
@@ -141,6 +151,17 @@
       display: block;
       background: #0d1b2a;
       cursor: crosshair;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      button {
+        transition: background 0.15s, box-shadow 0.15s, outline-color 0.15s;
+      }
+
+      button:active,
+      button.active {
+        transform: none;
+      }
     }
   </style>
 </head>
@@ -263,6 +284,7 @@
   const btnClear    = document.getElementById('btnClear');
   const btnPause    = document.getElementById('btnPause');
   const btnReset    = document.getElementById('btnReset');
+  const modeButtons = [btnMove, btnAdd, btnDelete, btnPin, btnSpring];
   const springKIn   = document.getElementById('springK');
   const dampingIn   = document.getElementById('damping');
   const gravIn      = document.getElementById('gravStrength');
@@ -273,25 +295,33 @@
   function setMode(m) {
     mode = m;
     springFirst = null;
-    [btnMove, btnAdd, btnDelete, btnPin, btnSpring].forEach(b => b.classList.remove('active'));
+    modeButtons.forEach(b => {
+      b.classList.remove('active');
+      b.setAttribute('aria-pressed', 'false');
+    });
     if (m === 'move') {
       btnMove.classList.add('active');
+      btnMove.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'grab';
       statusEl.textContent = 'Fogd meg és mozgasd a labdákat.';
     } else if (m === 'add') {
       btnAdd.classList.add('active');
+      btnAdd.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'crosshair';
       statusEl.textContent = 'Kattints a vászonra labda hozzáadásához.';
     } else if (m === 'delete') {
       btnDelete.classList.add('active');
+      btnDelete.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'pointer';
       statusEl.textContent = 'Kattints egy labdára a törléséhez.';
     } else if (m === 'pin') {
       btnPin.classList.add('active');
+      btnPin.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'pointer';
       statusEl.textContent = 'Kattints egy labdára a rögzítés/feloldáshoz.';
     } else if (m === 'spring') {
       btnSpring.classList.add('active');
+      btnSpring.setAttribute('aria-pressed', 'true');
       canvas.style.cursor = 'pointer';
       statusEl.textContent = 'Kattints az első labdára a rugóhoz.';
     }
