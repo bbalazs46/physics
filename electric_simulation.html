@@ -169,6 +169,11 @@
       <label for="fillContourBandsInput">Szintvonalak közötti terület kitöltése</label>
     </div>
 
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="perfectContourFillInput" />
+      <label for="perfectContourFillInput">Tökéletes felbontású szintvonal-kitöltés</label>
+    </div>
+
     <p class="control-note mt-8">Az 1-hez közeli potenciálfelbontás részletesebb, de lassabb megjelenítést okozhat.</p>
   </div>
 
@@ -257,6 +262,7 @@
   const uniformContourStepInput = document.getElementById('uniformContourStepInput');
   const uniformContourStepVal = document.getElementById('uniformContourStepVal');
   const fillContourBandsInput = document.getElementById('fillContourBandsInput');
+  const perfectContourFillInput = document.getElementById('perfectContourFillInput');
   const collisionPredictionCountInput = document.getElementById('collisionPredictionCountInput');
   const collisionPredictionCountVal = document.getElementById('collisionPredictionCountVal');
   const collisionPredictionStyleInput = document.getElementById('collisionPredictionStyle');
@@ -289,9 +295,22 @@
   // Visual density controls for the three background renderers.
   const SOLID_BACKGROUND_COLOR = '#2b2b2b';
   const FIELD_BACKGROUND_COLOR = '#0d1b2a';
+  const DEFAULT_PARTICLE_MASS = 2;
+  const DEFAULT_PARTICLE_CHARGE = 2;
+  const DEFAULT_BACKGROUND_MODE = 'equipotential';
+  const DEFAULT_COLOR_SCHEME = 'forest';
+  const DEFAULT_FIELD_STRENGTH = 100;
+  const DEFAULT_DAMPING = 1.0;
+  const DEFAULT_AUTO_POTENTIAL_ZERO_ENABLED = false;
+  const DEFAULT_ENERGY_CORRECTION_ENABLED = false;
+  const DEFAULT_WALL_CHARGE_ENABLED = false;
+  const DEFAULT_WALL_CHARGE_MAGNITUDE = 0.4;
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
   const DEFAULT_UNIFORM_CONTOUR_STEP = 10;
+  const DEFAULT_UNIFORM_CONTOURS_ENABLED = true;
+  const DEFAULT_FILL_CONTOUR_BANDS = true;
+  const DEFAULT_PERFECT_CONTOUR_FILL = false;
   const MIN_CONTOUR_LEVEL_THRESHOLD = 0.01;
   const MIN_UNIFORM_CONTOUR_STEP = .1;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
@@ -355,25 +374,26 @@
   let dragVelocityY = 0;
   let dragLastMoveTime = 0;
   let dragPositionHistory = [];
-  let nextParticleMass = 2;
-  let nextParticleCharge = 2;
-  let fieldStrength = 100;
+  let nextParticleMass = DEFAULT_PARTICLE_MASS;
+  let nextParticleCharge = DEFAULT_PARTICLE_CHARGE;
+  let fieldStrength = DEFAULT_FIELD_STRENGTH;
   // let inverseDistanceRepulsionEnabled = false;
-  let damping = 1.0;
-  let backgroundMode = 'equipotential';
-  let colorScheme = 'forest';
+  let damping = DEFAULT_DAMPING;
+  let backgroundMode = DEFAULT_BACKGROUND_MODE;
+  let colorScheme = DEFAULT_COLOR_SCHEME;
   let potentialZeroOffsetRatio = DEFAULT_POTENTIAL_ZERO_OFFSET_RATIO;
-  let autoPotentialZeroEnabled = false;
+  let autoPotentialZeroEnabled = DEFAULT_AUTO_POTENTIAL_ZERO_ENABLED;
   let trailLength = DEFAULT_TRAIL_LENGTH;
-  let energyCorrectionEnabled = false;
-  let wallChargeEnabled = false;
-  let wallChargeMagnitude = 0.4;
+  let energyCorrectionEnabled = DEFAULT_ENERGY_CORRECTION_ENABLED;
+  let wallChargeEnabled = DEFAULT_WALL_CHARGE_ENABLED;
+  let wallChargeMagnitude = DEFAULT_WALL_CHARGE_MAGNITUDE;
   let potentialResolution = DEFAULT_POTENTIAL_GRID_RESOLUTION;
   let fieldLineFrequency = DEFAULT_FIELD_LINE_FREQUENCY;
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
-  let uniformContoursEnabled = true;
+  let uniformContoursEnabled = DEFAULT_UNIFORM_CONTOURS_ENABLED;
   let uniformContourStep = DEFAULT_UNIFORM_CONTOUR_STEP;
-  let fillContourBands = true;
+  let fillContourBands = DEFAULT_FILL_CONTOUR_BANDS;
+  let perfectContourFillEnabled = DEFAULT_PERFECT_CONTOUR_FILL;
   let collisionPredictionCount = DEFAULT_COLLISION_PREDICTION_COUNT;
   let collisionPredictionStyle = DEFAULT_COLLISION_PREDICTION_STYLE;
   let nextParticleId = 1;
@@ -383,9 +403,30 @@
   let predictedCollisionPreview = { path: [], hits: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
   let collisionPredictionDirty = true;
   window.addEventListener('resize', markCollisionPredictionDirty);
-  backgroundModeInput.value = backgroundMode;
-  collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
-  collisionPredictionStyleInput.value = collisionPredictionStyle;
+  function syncControlInputsToState() {
+    massInput.value = String(nextParticleMass);
+    chargeInput.value = String(nextParticleCharge);
+    backgroundModeInput.value = backgroundMode;
+    colorSchemeInput.value = colorScheme;
+    potentialZeroOffsetInput.value = String(potentialZeroOffsetRatio);
+    autoPotentialZeroInput.checked = autoPotentialZeroEnabled;
+    forceInput.value = String(fieldStrength);
+    dampingInput.value = String(damping);
+    trailLengthInput.value = String(trailLength);
+    energyCorrectionInput.checked = energyCorrectionEnabled;
+    wallChargeInput.checked = wallChargeEnabled;
+    wallChargeMagnitudeInput.value = String(wallChargeMagnitude);
+    potentialResolutionInput.value = String(potentialResolution);
+    fieldLineFrequencyInput.value = String(fieldLineFrequency);
+    contourLineFrequencyInput.value = String(contourLineFrequency);
+    uniformContoursInput.checked = uniformContoursEnabled;
+    uniformContourStepInput.value = String(uniformContourStep);
+    fillContourBandsInput.checked = fillContourBands;
+    perfectContourFillInput.checked = perfectContourFillEnabled;
+    collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
+    collisionPredictionCountInput.value = String(collisionPredictionCount);
+    collisionPredictionStyleInput.value = collisionPredictionStyle;
+  }
 
   function radiusForMass(mass) {
     return 9 + Math.sqrt(mass) * 4;
@@ -588,13 +629,14 @@
     potentialResolutionVal.textContent = Math.round(potentialResolution);
     fieldLineFrequencyVal.textContent = Math.round(fieldLineFrequency);
     contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
-    uniformContourStepVal.textContent = Math.round(uniformContourStep);
+    uniformContourStepVal.textContent = uniformContourStep % 1 === 0 ? String(Math.round(uniformContourStep)) : uniformContourStep.toFixed(1);
     collisionPredictionCountVal.textContent = Math.round(collisionPredictionCount);
   }
 
   function updateContourControlState() {
     contourLineFrequencyInput.disabled = uniformContoursEnabled;
     uniformContourStepInput.disabled = !uniformContoursEnabled;
+    perfectContourFillInput.disabled = !fillContourBands;
   }
 
   function trimParticleTrail(particle) {
@@ -903,13 +945,18 @@
   });
 
   uniformContourStepInput.addEventListener('input', () => {
-    uniformContourStep = parseInt(uniformContourStepInput.value, 10);
+    uniformContourStep = parseFloat(uniformContourStepInput.value);
     updateEditorValues();
   });
   uniformContourStepInput.addEventListener('change', markCollisionPredictionDirty);
 
   fillContourBandsInput.addEventListener('change', () => {
     fillContourBands = fillContourBandsInput.checked;
+    updateContourControlState();
+  });
+
+  perfectContourFillInput.addEventListener('change', () => {
+    perfectContourFillEnabled = perfectContourFillInput.checked;
   });
 
   collisionPredictionCountInput.addEventListener('input', () => {
@@ -1346,6 +1393,57 @@
     return (MARCHING_SQUARE_CASES[index] || []).map(([a, b]) => [edges[a], edges[b]]);
   }
 
+  function interpolateVertexAtLevel(start, end, level) {
+    const interpolationRatio = Math.abs(end.value - start.value) < INTERPOLATION_EPSILON ? 0.5 : (level - start.value) / (end.value - start.value);
+    const clampedRatio = Math.max(0, Math.min(1, interpolationRatio));
+    return {
+      x: start.x + (end.x - start.x) * clampedRatio,
+      y: start.y + (end.y - start.y) * clampedRatio,
+      value: level
+    };
+  }
+
+  function clipPolygonByThreshold(polygon, threshold, keepAbove) {
+    const clipped = [];
+    if (polygon.length === 0) return clipped;
+
+    let previous = polygon[polygon.length - 1];
+    let previousInside = keepAbove ? previous.value >= threshold : previous.value <= threshold;
+
+    for (const current of polygon) {
+      const currentInside = keepAbove ? current.value >= threshold : current.value <= threshold;
+      if (currentInside !== previousInside) {
+        clipped.push(interpolateVertexAtLevel(previous, current, threshold));
+      }
+      if (currentInside) {
+        clipped.push(current);
+      }
+      previous = current;
+      previousInside = currentInside;
+    }
+
+    return clipped;
+  }
+
+  function clipPolygonToContourBand(polygon, lowerBound, upperBound) {
+    return clipPolygonByThreshold(
+      clipPolygonByThreshold(polygon, lowerBound, true),
+      upperBound,
+      false
+    );
+  }
+
+  function fillPolygon(polygon) {
+    if (polygon.length < 3) return;
+    ctx.beginPath();
+    ctx.moveTo(polygon[0].x, polygon[0].y);
+    for (let index = 1; index < polygon.length; index++) {
+      ctx.lineTo(polygon[index].x, polygon[index].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
   function interpolatePoint(x1, y1, v1, x2, y2, v2, level) {
     const interpolationRatio = Math.abs(v2 - v1) < INTERPOLATION_EPSILON ? 0.5 : (level - v1) / (v2 - v1);
     const clampedRatio = Math.max(0, Math.min(1, interpolationRatio));
@@ -1370,6 +1468,44 @@
     }
 
     return (lowerBound + upperBound) / 2;
+  }
+
+  function drawPerfectContourBands(field, cols, rows, levels, maxAbs, scheme) {
+    for (let ix = 0; ix < cols; ix++) {
+      for (let iy = 0; iy < rows; iy++) {
+        const x = ix * potentialResolution;
+        const y = iy * potentialResolution;
+        const topLeft = { x, y, value: field[ix][iy] };
+        const topRight = { x: x + potentialResolution, y, value: field[ix + 1][iy] };
+        const bottomRight = { x: x + potentialResolution, y: y + potentialResolution, value: field[ix + 1][iy + 1] };
+        const bottomLeft = { x, y: y + potentialResolution, value: field[ix][iy + 1] };
+        const minValue = Math.min(topLeft.value, topRight.value, bottomRight.value, bottomLeft.value);
+        const maxValue = Math.max(topLeft.value, topRight.value, bottomRight.value, bottomLeft.value);
+        const triangles = [
+          [topLeft, topRight, bottomRight],
+          [topLeft, bottomRight, bottomLeft]
+        ];
+        let lowerBound = -maxAbs;
+
+        for (let bandIndex = 0; bandIndex <= levels.length; bandIndex++) {
+          const upperBound = bandIndex < levels.length ? levels[bandIndex] : maxAbs;
+          if (upperBound < minValue - INTERPOLATION_EPSILON) {
+            lowerBound = upperBound;
+            continue;
+          }
+          if (lowerBound > maxValue + INTERPOLATION_EPSILON) {
+            break;
+          }
+
+          ctx.fillStyle = getPotentialColor((lowerBound + upperBound) / 2, maxAbs, CONTOUR_BAND_ALPHA, scheme);
+          for (const triangle of triangles) {
+            fillPolygon(clipPolygonToContourBand(triangle, lowerBound, upperBound));
+          }
+
+          lowerBound = upperBound;
+        }
+      }
+    }
   }
 
   function drawEquipotentialLines(autoZeroReference = undefined) {
@@ -1399,19 +1535,23 @@
     const levels = getContourLevels(maxAbs);
 
     if (fillContourBands && levels.length > 0) {
-      for (let ix = 0; ix < cols; ix++) {
-        for (let iy = 0; iy < rows; iy++) {
-          const x = ix * potentialResolution;
-          const y = iy * potentialResolution;
-          const averagePotential = (
-            field[ix][iy]
-            + field[ix + 1][iy]
-            + field[ix + 1][iy + 1]
-            + field[ix][iy + 1]
-          ) / 4;
-          const bandRepresentative = getContourBandRepresentative(averagePotential, levels, maxAbs);
-          ctx.fillStyle = getPotentialColor(bandRepresentative, maxAbs, CONTOUR_BAND_ALPHA, scheme);
-          ctx.fillRect(x, y, potentialResolution, potentialResolution);
+      if (perfectContourFillEnabled) {
+        drawPerfectContourBands(field, cols, rows, levels, maxAbs, scheme);
+      } else {
+        for (let ix = 0; ix < cols; ix++) {
+          for (let iy = 0; iy < rows; iy++) {
+            const x = ix * potentialResolution;
+            const y = iy * potentialResolution;
+            const averagePotential = (
+              field[ix][iy]
+              + field[ix + 1][iy]
+              + field[ix + 1][iy + 1]
+              + field[ix][iy + 1]
+            ) / 4;
+            const bandRepresentative = getContourBandRepresentative(averagePotential, levels, maxAbs);
+            ctx.fillStyle = getPotentialColor(bandRepresentative, maxAbs, CONTOUR_BAND_ALPHA, scheme);
+            ctx.fillRect(x, y, potentialResolution, potentialResolution);
+          }
         }
       }
     }
@@ -1724,6 +1864,7 @@
     markCollisionPredictionDirty();
   }
 
+  syncControlInputsToState();
   updateEditorValues();
   updateContourControlState();
   energyCorrectionInput.disabled = false;
