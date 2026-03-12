@@ -173,6 +173,13 @@
 
   <div class="section">
     <h3>Szimuláció</h3>
+    <div class="slider-row">
+      <div class="slider-label">
+        <span>Előre jelzett falütközések száma</span>
+        <span id="collisionPredictionCountVal">5</span>
+      </div>
+      <input type="range" id="collisionPredictionCountInput" min="0" max="12" step="1" value="5" />
+    </div>
     <div class="button-row">
       <button class="btn-neutral" id="btnPause">⏸️ Szünet</button>
       <button class="btn-neutral" id="btnReset">🔄 Reset</button>
@@ -240,6 +247,8 @@
   const uniformContourStepInput = document.getElementById('uniformContourStepInput');
   const uniformContourStepVal = document.getElementById('uniformContourStepVal');
   const fillContourBandsInput = document.getElementById('fillContourBandsInput');
+  const collisionPredictionCountInput = document.getElementById('collisionPredictionCountInput');
+  const collisionPredictionCountVal = document.getElementById('collisionPredictionCountVal');
 
   const modeButtons = [btnMove, btnAdd, btnDelete, btnPin];
   const PALETTES = {
@@ -292,6 +301,12 @@
   const FIELD_FLOW_DASH = [3, 12];
   const FIELD_FLOW_SPEED = 0.11;
   const FIELD_FLOW_CYCLE = 15;
+  const DEFAULT_COLLISION_PREDICTION_COUNT = 5;
+  const MAX_COLLISION_PREDICTION_COUNT = 12;
+  const MIN_PREDICTION_STEPS = 240;
+  const MAX_PREDICTION_STEPS_PER_HIT = 1800;
+  const PREDICTION_PATH_SAMPLE_INTERVAL = 2;
+  const PREDICTION_MARKER_RADIUS = 9;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -339,10 +354,15 @@
   let uniformContoursEnabled = true;
   let uniformContourStep = DEFAULT_UNIFORM_CONTOUR_STEP;
   let fillContourBands = true;
+  let collisionPredictionCount = DEFAULT_COLLISION_PREDICTION_COUNT;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
   let cachedWallChargeSamples = [];
+  let predictedCollisionPreview = { path: [], hits: [] };
+  let collisionPredictionDirty = true;
+  window.addEventListener('resize', markCollisionPredictionDirty);
+  collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
 
   function radiusForMass(mass) {
     return 9 + Math.sqrt(mass) * 4;
@@ -538,6 +558,7 @@
     fieldLineFrequencyVal.textContent = Math.round(fieldLineFrequency);
     contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
     uniformContourStepVal.textContent = Math.round(uniformContourStep);
+    collisionPredictionCountVal.textContent = Math.round(collisionPredictionCount);
   }
 
   function updateContourControlState() {
@@ -619,6 +640,7 @@
       syncControlsToSelectedParticle();
       statusEl.textContent = `Kijelölt részecske: m=${selectedParticle.mass.toFixed(1)}, q=${formatCharge(selectedParticle.charge)}.`;
     }
+    markCollisionPredictionDirty();
   }
 
   function applyEditorToSelectedParticle() {
@@ -629,16 +651,26 @@
     resetTrackedTotalEnergy();
   }
 
-  function calculateTotalEnergy() {
+  function markCollisionPredictionDirty() {
+    collisionPredictionDirty = true;
+  }
+
+  function maybeRefreshCollisionPrediction() {
+    if (!collisionPredictionDirty || dragged) return;
+    predictedCollisionPreview = computeCollisionPredictionPreview();
+    collisionPredictionDirty = false;
+  }
+
+  function calculateTotalEnergyFor(particleList) {
     let kineticEnergy = 0;
     let potentialEnergy = 0;
 
-    for (let i = 0; i < particles.length; i++) {
-      const particle = particles[i];
+    for (let i = 0; i < particleList.length; i++) {
+      const particle = particleList[i];
       kineticEnergy += 0.5 * Math.max(particle.mass, MIN_PARTICLE_MASS) * (particle.vx * particle.vx + particle.vy * particle.vy);
 
-      for (let j = i + 1; j < particles.length; j++) {
-        const otherParticle = particles[j];
+      for (let j = i + 1; j < particleList.length; j++) {
+        const otherParticle = particleList[j];
         const deltaX = particle.x - otherParticle.x;
         const deltaY = particle.y - otherParticle.y;
         const dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY + EPSILON);
@@ -660,12 +692,20 @@
     };
   }
 
+  function calculateTotalEnergy() {
+    return calculateTotalEnergyFor(particles);
+  }
+
   function resetTrackedTotalEnergy() {
     trackedTotalEnergy = calculateTotalEnergy().total;
   }
 
   function correctEnergyDrift(targetTotalEnergy) {
-    const currentEnergy = calculateTotalEnergy();
+    correctEnergyDriftFor(particles, targetTotalEnergy, dragged);
+  }
+
+  function correctEnergyDriftFor(particleList, targetTotalEnergy, excludedParticle = null) {
+    const currentEnergy = calculateTotalEnergyFor(particleList);
     const drift = currentEnergy.total - targetTotalEnergy;
     if (!Number.isFinite(drift) || Math.abs(drift) <= ENERGY_CORRECTION_TOLERANCE) return;
 
@@ -673,8 +713,8 @@
     if (!Number.isFinite(targetKineticEnergy)) return;
 
     let adjustableKineticEnergy = 0;
-    for (const particle of particles) {
-      if (particle.pinned || particle === dragged) continue;
+    for (const particle of particleList) {
+      if (particle.pinned || particle === excludedParticle) continue;
       adjustableKineticEnergy += 0.5 * Math.max(particle.mass, MIN_PARTICLE_MASS) * (particle.vx * particle.vx + particle.vy * particle.vy);
     }
 
@@ -683,8 +723,8 @@
     const velocityScale = Math.sqrt(targetKineticEnergy / adjustableKineticEnergy);
     if (!Number.isFinite(velocityScale)) return;
 
-    for (const particle of particles) {
-      if (particle.pinned || particle === dragged) continue;
+    for (const particle of particleList) {
+      if (particle.pinned || particle === excludedParticle) continue;
       particle.vx *= velocityScale;
       particle.vy *= velocityScale;
     }
@@ -733,6 +773,7 @@
     initDemo();
     resetTrackedTotalEnergy();
     setMode('move');
+    markCollisionPredictionDirty();
   });
 
   massInput.addEventListener('input', () => {
@@ -740,12 +781,14 @@
     updateEditorValues();
     applyEditorToSelectedParticle();
   });
+  massInput.addEventListener('change', markCollisionPredictionDirty);
 
   chargeInput.addEventListener('input', () => {
     nextParticleCharge = parseFloat(chargeInput.value);
     updateEditorValues();
     applyEditorToSelectedParticle();
   });
+  chargeInput.addEventListener('change', markCollisionPredictionDirty);
 
   backgroundModeInput.addEventListener('change', () => {
     backgroundMode = backgroundModeInput.value;
@@ -759,6 +802,7 @@
     potentialZeroOffsetRatio = parseFloat(potentialZeroOffsetInput.value);
     updateEditorValues();
   });
+  potentialZeroOffsetInput.addEventListener('change', markCollisionPredictionDirty);
 
   autoPotentialZeroInput.addEventListener('change', () => {
     autoPotentialZeroEnabled = autoPotentialZeroInput.checked;
@@ -770,11 +814,13 @@
     updateEditorValues();
     resetTrackedTotalEnergy();
   });
+  forceInput.addEventListener('change', markCollisionPredictionDirty);
 
   dampingInput.addEventListener('input', () => {
     damping = parseFloat(dampingInput.value);
     updateEditorValues();
   });
+  dampingInput.addEventListener('change', markCollisionPredictionDirty);
 
   trailLengthInput.addEventListener('input', () => {
     trailLength = parseInt(trailLengthInput.value, 10);
@@ -785,11 +831,13 @@
   energyCorrectionInput.addEventListener('change', () => {
     energyCorrectionEnabled = energyCorrectionInput.checked;
     resetTrackedTotalEnergy();
+    markCollisionPredictionDirty();
   });
 
   wallChargeInput.addEventListener('change', () => {
     wallChargeEnabled = wallChargeInput.checked;
     resetTrackedTotalEnergy();
+    markCollisionPredictionDirty();
   });
 
   wallChargeMagnitudeInput.addEventListener('input', () => {
@@ -797,35 +845,47 @@
     updateEditorValues();
     resetTrackedTotalEnergy();
   });
+  wallChargeMagnitudeInput.addEventListener('change', markCollisionPredictionDirty);
 
   potentialResolutionInput.addEventListener('input', () => {
     potentialResolution = parseFloat(potentialResolutionInput.value);
     updateEditorValues();
   });
+  potentialResolutionInput.addEventListener('change', markCollisionPredictionDirty);
 
   fieldLineFrequencyInput.addEventListener('input', () => {
     fieldLineFrequency = parseInt(fieldLineFrequencyInput.value, 10);
     updateEditorValues();
   });
+  fieldLineFrequencyInput.addEventListener('change', markCollisionPredictionDirty);
 
   contourLineFrequencyInput.addEventListener('input', () => {
     contourLineFrequency = parseInt(contourLineFrequencyInput.value, 10);
     updateEditorValues();
   });
+  contourLineFrequencyInput.addEventListener('change', markCollisionPredictionDirty);
 
   uniformContoursInput.addEventListener('change', () => {
     uniformContoursEnabled = uniformContoursInput.checked;
     updateContourControlState();
+    markCollisionPredictionDirty();
   });
 
   uniformContourStepInput.addEventListener('input', () => {
     uniformContourStep = parseInt(uniformContourStepInput.value, 10);
     updateEditorValues();
   });
+  uniformContourStepInput.addEventListener('change', markCollisionPredictionDirty);
 
   fillContourBandsInput.addEventListener('change', () => {
     fillContourBands = fillContourBandsInput.checked;
   });
+
+  collisionPredictionCountInput.addEventListener('input', () => {
+    collisionPredictionCount = parseInt(collisionPredictionCountInput.value, 10);
+    updateEditorValues();
+  });
+  collisionPredictionCountInput.addEventListener('change', markCollisionPredictionDirty);
 
   function getPos(event) {
     const rect = canvas.getBoundingClientRect();
@@ -919,6 +979,7 @@
       recordParticleTrail(particle);
       resetTrackedTotalEnergy();
       statusEl.textContent = `Új részecske hozzáadva: m=${particle.mass.toFixed(1)}, q=${formatCharge(particle.charge)}.`;
+      markCollisionPredictionDirty();
       return;
     }
 
@@ -929,6 +990,7 @@
       }
       resetTrackedTotalEnergy();
       statusEl.textContent = 'Részecske törölve.';
+      markCollisionPredictionDirty();
       return;
     }
 
@@ -941,6 +1003,7 @@
       setSelectedParticle(hit);
       resetTrackedTotalEnergy();
       statusEl.textContent = hit.pinned ? 'Részecske rögzítve.' : 'Részecske feloldva.';
+      markCollisionPredictionDirty();
       return;
     }
 
@@ -961,6 +1024,7 @@
       recordDragPosition(hit.x, hit.y, dragLastMoveTime);
       resetTrackedTotalEnergy();
       canvas.style.cursor = 'grabbing';
+      markCollisionPredictionDirty();
     }
   }
 
@@ -980,6 +1044,7 @@
     dragLastMoveTime = now;
     recordParticleTrail(dragged);
     resetTrackedTotalEnergy();
+    markCollisionPredictionDirty();
   }
 
   function onPointerUp() {
@@ -1006,6 +1071,8 @@
     dragPositionHistory = [];
     resetTrackedTotalEnergy();
     if (mode === 'move') canvas.style.cursor = 'grab';
+    markCollisionPredictionDirty();
+    maybeRefreshCollisionPrediction();
   }
 
   canvas.addEventListener('mousedown', onPointerDown);
@@ -1057,20 +1124,36 @@
     return { fieldX, fieldY };
   }
 
-  function step() {
-    if (paused) return;
-    if (trackedTotalEnergy === null) {
-      resetTrackedTotalEnergy();
-    }
+  function cloneParticleState(particle) {
+    return {
+      id: particle.id,
+      x: particle.x,
+      y: particle.y,
+      vx: particle.vx,
+      vy: particle.vy,
+      mass: particle.mass,
+      charge: particle.charge,
+      pinned: particle.pinned,
+      r: particle.r
+    };
+  }
 
-    for (let i = 0; i < particles.length; i++) {
-      const currentParticle = particles[i];
-      if (currentParticle.pinned || currentParticle === dragged) continue;
+  function buildCollisionMarker(particle, wall) {
+    if (wall === 'left') return { wall, x: 0, y: particle.y };
+    if (wall === 'right') return { wall, x: canvas.width, y: particle.y };
+    if (wall === 'top') return { wall, x: particle.x, y: 0 };
+    return { wall: 'bottom', x: particle.x, y: canvas.height };
+  }
+
+  function advanceParticleSystem(particleList, trackedEnergy, excludedParticle = null, previewState = null) {
+    for (let i = 0; i < particleList.length; i++) {
+      const currentParticle = particleList[i];
+      if (currentParticle.pinned || currentParticle === excludedParticle) continue;
 
       const acceleration = { x: 0, y: 0 };
-      for (let j = 0; j < particles.length; j++) {
+      for (let j = 0; j < particleList.length; j++) {
         if (i === j) continue;
-        const otherParticle = particles[j];
+        const otherParticle = particleList[j];
         applyChargeAcceleration(currentParticle, otherParticle.x, otherParticle.y, otherParticle.charge, acceleration);
       }
 
@@ -1082,39 +1165,100 @@
       currentParticle.vy += acceleration.y;
     }
 
-    // First keep the conservative Coulomb update energy-neutral, then apply damping so friction can still remove energy.
     if (energyCorrectionEnabled) {
-      correctEnergyDrift(trackedTotalEnergy);
+      correctEnergyDriftFor(particleList, trackedEnergy, excludedParticle);
     }
 
-    for (const particle of particles) {
-      if (particle.pinned || particle === dragged) continue;
+    let collisionOccurred = false;
+    for (const particle of particleList) {
+      if (particle.pinned || particle === excludedParticle) continue;
       particle.vx *= damping;
       particle.vy *= damping;
       particle.x += particle.vx;
       particle.y += particle.vy;
 
+      let hitWall = null;
       if (particle.x - particle.r < 0) {
         particle.x = particle.r;
         particle.vx *= -WALL_BOUNCE_COEFFICIENT;
-      }
-      if (particle.x + particle.r > canvas.width) {
+        hitWall = 'left';
+      } else if (particle.x + particle.r > canvas.width) {
         particle.x = canvas.width - particle.r;
         particle.vx *= -WALL_BOUNCE_COEFFICIENT;
+        hitWall = 'right';
       }
+
       if (particle.y - particle.r < 0) {
         particle.y = particle.r;
         particle.vy *= -WALL_BOUNCE_COEFFICIENT;
-      }
-      if (particle.y + particle.r > canvas.height) {
+        hitWall = hitWall || 'top';
+      } else if (particle.y + particle.r > canvas.height) {
         particle.y = canvas.height - particle.r;
         particle.vy *= -WALL_BOUNCE_COEFFICIENT;
+        hitWall = hitWall || 'bottom';
       }
 
-      recordParticleTrail(particle);
+      if (hitWall) {
+        collisionOccurred = true;
+        if (previewState && particle.id === previewState.targetId && previewState.hits.length < previewState.maxHits) {
+          previewState.hits.push(buildCollisionMarker(particle, hitWall));
+        }
+      }
+
+      if (!previewState && particleList === particles) {
+        recordParticleTrail(particle);
+      }
     }
 
-    trackedTotalEnergy = calculateTotalEnergy().total;
+    return {
+      collisionOccurred,
+      trackedEnergy: calculateTotalEnergyFor(particleList).total
+    };
+  }
+
+  function computeCollisionPredictionPreview() {
+    if (collisionPredictionCount <= 0 || !selectedParticle || selectedParticle.pinned) {
+      return { path: [], hits: [] };
+    }
+
+    const simulatedParticles = particles.map(cloneParticleState);
+    const simulatedTarget = simulatedParticles.find(particle => particle.id === selectedParticle.id);
+    if (!simulatedTarget) {
+      return { path: [], hits: [] };
+    }
+
+    const previewState = {
+      targetId: simulatedTarget.id,
+      maxHits: collisionPredictionCount,
+      hits: []
+    };
+    const path = [{ x: simulatedTarget.x, y: simulatedTarget.y }];
+    let simulatedTrackedEnergy = calculateTotalEnergyFor(simulatedParticles).total;
+    const maxSteps = Math.max(MIN_PREDICTION_STEPS, collisionPredictionCount * MAX_PREDICTION_STEPS_PER_HIT);
+
+    for (let stepIndex = 0; stepIndex < maxSteps && previewState.hits.length < collisionPredictionCount; stepIndex++) {
+      const hitCountBeforeStep = previewState.hits.length;
+      const result = advanceParticleSystem(simulatedParticles, simulatedTrackedEnergy, null, previewState);
+      simulatedTrackedEnergy = result.trackedEnergy;
+      if (stepIndex % PREDICTION_PATH_SAMPLE_INTERVAL === 0 || previewState.hits.length > hitCountBeforeStep) {
+        path.push({ x: simulatedTarget.x, y: simulatedTarget.y });
+      }
+    }
+
+    return { path, hits: previewState.hits };
+  }
+
+  function step() {
+    if (paused) return;
+    if (trackedTotalEnergy === null) {
+      resetTrackedTotalEnergy();
+    }
+
+    const result = advanceParticleSystem(particles, trackedTotalEnergy, dragged);
+    trackedTotalEnergy = result.trackedEnergy;
+    if (result.collisionOccurred) {
+      markCollisionPredictionDirty();
+    }
   }
 
   function drawPotentialMap(autoZeroReference = undefined) {
@@ -1439,9 +1583,47 @@
     }
   }
 
+  function drawCollisionPredictionPreview() {
+    const preview = predictedCollisionPreview;
+    if (!preview || (preview.path.length === 0 && preview.hits.length === 0)) return;
+
+    if (preview.path.length > 1) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(preview.path[0].x, preview.path[0].y);
+      for (let index = 1; index < preview.path.length; index++) {
+        ctx.lineTo(preview.path[index].x, preview.path[index].y);
+      }
+      ctx.setLineDash([7, 7]);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    preview.hits.forEach((hit, index) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(hit.x, hit.y, PREDICTION_MARKER_RADIUS, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(13, 27, 42, 0.92)';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 11px "Segoe UI"';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(index + 1), hit.x, hit.y);
+      ctx.restore();
+    });
+  }
+
   function draw() {
+    maybeRefreshCollisionPrediction();
     drawBackground();
     drawTrails();
+    drawCollisionPredictionPreview();
     drawParticles();
   }
 
@@ -1467,6 +1649,7 @@
       recordParticleTrail(particle);
     }
     setSelectedParticle(weakPositive);
+    markCollisionPredictionDirty();
   }
 
   updateEditorValues();
