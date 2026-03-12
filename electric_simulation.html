@@ -311,6 +311,8 @@
   const FIELD_FLOW_DASH = [3, 12];
   const FIELD_FLOW_SPEED = 0.11;
   const FIELD_FLOW_CYCLE = 15;
+  // The physics loop advances two substeps on each ~60 FPS animation frame.
+  const SIMULATION_STEPS_PER_SECOND = 120;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 5;
   const DEFAULT_COLLISION_PREDICTION_STYLE = 'fading-dots';
   const MAX_COLLISION_PREDICTION_COUNT = 12;
@@ -318,9 +320,10 @@
   const MAX_PREDICTION_STEPS_PER_HIT = 1800;
   const PREDICTION_PATH_SAMPLE_INTERVAL = 2;
   const PREDICTION_MARKER_RADIUS = 9;
-  const PREDICTION_STEP_DURATION_MS = 1000 / (60 * 2);
+  const PREDICTION_STEP_DURATION_MS = 1000 / SIMULATION_STEPS_PER_SECOND;
   const PREDICTION_DOT_MIN_ALPHA = 0.18;
   const PREDICTION_DOT_ALPHA_RANGE = 0.68;
+  const PREDICTION_DOT_COLOR_RGB = '255, 82, 82';
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -374,7 +377,7 @@
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
   let cachedWallChargeSamples = [];
-  let predictedCollisionPreview = { path: [], hits: [], createdAtMs: 0 };
+  let predictedCollisionPreview = { path: [], hits: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
   let collisionPredictionDirty = true;
   window.addEventListener('resize', markCollisionPredictionDirty);
   collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
@@ -900,7 +903,6 @@
   collisionPredictionCountInput.addEventListener('input', () => {
     collisionPredictionCount = parseInt(collisionPredictionCountInput.value, 10);
     updateEditorValues();
-    markCollisionPredictionDirty();
   });
   collisionPredictionCountInput.addEventListener('change', markCollisionPredictionDirty);
   collisionPredictionStyleInput.addEventListener('change', () => {
@@ -1165,6 +1167,10 @@
     return { wall: 'bottom', x: particle.x, y: canvas.height, stepIndex };
   }
 
+  function predictionTimeMsForStepIndex(stepIndex) {
+    return Math.max(1, stepIndex) * PREDICTION_STEP_DURATION_MS;
+  }
+
   function advanceParticleSystem(particleList, trackedEnergy, excludedParticle = null, previewState = null) {
     for (let i = 0; i < particleList.length; i++) {
       const currentParticle = particleList[i];
@@ -1238,13 +1244,13 @@
 
   function computeCollisionPredictionPreview() {
     if (collisionPredictionCount <= 0 || !selectedParticle || selectedParticle.pinned) {
-      return { path: [], hits: [], createdAtMs: performance.now() };
+      return { path: [], hits: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
     }
 
     const simulatedParticles = particles.map(cloneParticleState);
     const simulatedTarget = simulatedParticles.find(particle => particle.id === selectedParticle.id);
     if (!simulatedTarget) {
-      return { path: [], hits: [], createdAtMs: performance.now() };
+      return { path: [], hits: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
     }
 
     const previewState = {
@@ -1267,7 +1273,15 @@
       }
     }
 
-    return { path, hits: previewState.hits, createdAtMs: performance.now() };
+    return {
+      path,
+      hits: previewState.hits,
+      createdAtMs: performance.now(),
+      maxPredictionTimeMs: previewState.hits.reduce(
+        (maxTimeMs, hit) => Math.max(maxTimeMs, predictionTimeMsForStepIndex(hit.stepIndex)),
+        PREDICTION_STEP_DURATION_MS
+      )
+    };
   }
 
   function step() {
@@ -1623,11 +1637,12 @@
       ctx.restore();
     }
 
-    const previewAgeMs = Math.max(0, performance.now() - (preview.createdAtMs || 0));
-    const maxPredictionTimeMs = Math.max(
-      ...preview.hits.map(hit => Math.max(1, hit.stepIndex || 1) * PREDICTION_STEP_DURATION_MS),
-      PREDICTION_STEP_DURATION_MS
-    );
+    const previewAgeMs = collisionPredictionStyle === 'path-numbered'
+      ? 0
+      : Math.max(0, performance.now() - (preview.createdAtMs || 0));
+    const maxPredictionTimeMs = collisionPredictionStyle === 'path-numbered'
+      ? PREDICTION_STEP_DURATION_MS
+      : Math.max(PREDICTION_STEP_DURATION_MS, preview.maxPredictionTimeMs || 0);
     preview.hits.forEach((hit, index) => {
       ctx.save();
       ctx.beginPath();
@@ -1644,10 +1659,10 @@
         ctx.textBaseline = 'middle';
         ctx.fillText(String(index + 1), hit.x, hit.y);
       } else {
-        const predictionTimeMs = Math.max(1, hit.stepIndex || index + 1) * PREDICTION_STEP_DURATION_MS;
-        const remainingRatio = Math.min(1, Math.max(0, predictionTimeMs - previewAgeMs) / maxPredictionTimeMs);
-        const alpha = PREDICTION_DOT_MIN_ALPHA + (1 - remainingRatio) * PREDICTION_DOT_ALPHA_RANGE;
-        ctx.fillStyle = `rgba(255, 82, 82, ${alpha.toFixed(3)})`;
+        const predictionTimeMs = predictionTimeMsForStepIndex(hit.stepIndex);
+        const futureTimeRatio = Math.min(1, Math.max(0, predictionTimeMs - previewAgeMs) / maxPredictionTimeMs);
+        const alpha = PREDICTION_DOT_MIN_ALPHA + (1 - futureTimeRatio) * PREDICTION_DOT_ALPHA_RANGE;
+        ctx.fillStyle = `rgba(${PREDICTION_DOT_COLOR_RGB}, ${alpha})`;
         ctx.fill();
       }
       ctx.restore();
