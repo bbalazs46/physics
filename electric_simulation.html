@@ -258,7 +258,7 @@
   const DRAG_RELEASE_STALE_MS = 140;
   const DRAG_VELOCITY_REFERENCE_FPS = 60;
   const DRAG_VELOCITY_FRAME_MS = 1000 / DRAG_VELOCITY_REFERENCE_FPS;
-  const DRAG_VELOCITY_SMOOTHING_FACTOR = 0.65;
+  const DRAG_VELOCITY_AVERAGE_WINDOW_MS = 500;
   const FIELD_LINE_SEED_OFFSET = 6;
   const POTENTIAL_MAP_LIGHTNESS_MIN = 12;
   const POTENTIAL_MAP_LIGHTNESS_RANGE = 55;
@@ -319,6 +319,7 @@
   let dragVelocityX = 0;
   let dragVelocityY = 0;
   let dragLastMoveTime = 0;
+  let dragPositionHistory = [];
   let nextParticleMass = 2;
   let nextParticleCharge = 2;
   let fieldStrength = 500;
@@ -847,8 +848,63 @@
     return null;
   }
 
-  function smoothDragVelocity(previousVelocity, currentVelocity) {
-    return previousVelocity * (1 - DRAG_VELOCITY_SMOOTHING_FACTOR) + currentVelocity * DRAG_VELOCITY_SMOOTHING_FACTOR;
+  function recordDragPosition(x, y, time) {
+    dragPositionHistory.push({ x, y, time });
+    const cutoffTime = time - DRAG_VELOCITY_AVERAGE_WINDOW_MS;
+    while (dragPositionHistory.length > 2 && dragPositionHistory[1].time < cutoffTime) {
+      dragPositionHistory.shift();
+    }
+  }
+
+  function getDragPositionAtTime(time) {
+    if (dragPositionHistory.length === 0) {
+      return null;
+    }
+    if (time <= dragPositionHistory[0].time) {
+      return dragPositionHistory[0];
+    }
+    for (let i = 1; i < dragPositionHistory.length; i++) {
+      const previousPosition = dragPositionHistory[i - 1];
+      const currentPosition = dragPositionHistory[i];
+      if (time <= currentPosition.time) {
+        const interval = currentPosition.time - previousPosition.time;
+        if (interval <= 0) {
+          return currentPosition;
+        }
+        const ratio = (time - previousPosition.time) / interval;
+        return {
+          x: previousPosition.x + (currentPosition.x - previousPosition.x) * ratio,
+          y: previousPosition.y + (currentPosition.y - previousPosition.y) * ratio,
+          time
+        };
+      }
+    }
+    return dragPositionHistory[dragPositionHistory.length - 1];
+  }
+
+  function updateDragVelocityFromHistory() {
+    if (dragPositionHistory.length < 2) {
+      dragVelocityX = 0;
+      dragVelocityY = 0;
+      return;
+    }
+
+    const latestPosition = dragPositionHistory[dragPositionHistory.length - 1];
+    const startTime = Math.max(
+      latestPosition.time - DRAG_VELOCITY_AVERAGE_WINDOW_MS,
+      dragPositionHistory[0].time
+    );
+    const startPosition = getDragPositionAtTime(startTime);
+    const elapsedTime = latestPosition.time - startPosition.time;
+
+    if (elapsedTime <= 0) {
+      dragVelocityX = 0;
+      dragVelocityY = 0;
+      return;
+    }
+
+    dragVelocityX = ((latestPosition.x - startPosition.x) / elapsedTime) * DRAG_VELOCITY_FRAME_MS;
+    dragVelocityY = ((latestPosition.y - startPosition.y) / elapsedTime) * DRAG_VELOCITY_FRAME_MS;
   }
 
   function onPointerDown(event) {
@@ -901,6 +957,8 @@
       dragVelocityX = 0;
       dragVelocityY = 0;
       dragLastMoveTime = performance.now();
+      dragPositionHistory = [];
+      recordDragPosition(hit.x, hit.y, dragLastMoveTime);
       resetTrackedTotalEnergy();
       canvas.style.cursor = 'grabbing';
     }
@@ -913,20 +971,13 @@
     const nextX = x + dragOffX;
     const nextY = y + dragOffY;
     const now = performance.now();
-    const deltaTime = now - dragLastMoveTime;
-    if (deltaTime > 0) {
-      const instantVelocityX = ((nextX - dragged.x) / deltaTime) * DRAG_VELOCITY_FRAME_MS;
-      const instantVelocityY = ((nextY - dragged.y) / deltaTime) * DRAG_VELOCITY_FRAME_MS;
-
-      dragVelocityX = smoothDragVelocity(dragVelocityX, instantVelocityX);
-      dragVelocityY = smoothDragVelocity(dragVelocityY, instantVelocityY);
-    }
-    dragLastMoveTime = now;
-
     dragged.x = nextX;
     dragged.y = nextY;
     dragged.vx = 0;
     dragged.vy = 0;
+    recordDragPosition(nextX, nextY, now);
+    updateDragVelocityFromHistory();
+    dragLastMoveTime = now;
     recordParticleTrail(dragged);
     resetTrackedTotalEnergy();
   }
@@ -952,6 +1003,7 @@
     dragVelocityX = 0;
     dragVelocityY = 0;
     dragLastMoveTime = 0;
+    dragPositionHistory = [];
     resetTrackedTotalEnergy();
     if (mode === 'move') canvas.style.cursor = 'grab';
   }
