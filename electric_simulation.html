@@ -47,11 +47,11 @@
         <span>Háttér mód</span>
       </div>
       <select id="backgroundMode">
-        <option value="none">Egyszínű sötétszürke háttér</option>
         <option value="equipotential">Potenciál szintvonalak</option>
         <option value="potential">Potenciál nagysága</option>
         <option value="potential-equipotential">Potenciál színe és szintvonalak</option>
         <option value="field">Erővonalak</option>
+        <option value="solid">Egyszínű sötétszürke háttér</option>
       </select>
     </div>
 
@@ -441,6 +441,7 @@
       || backgroundMode === 'potential-equipotential';
   }
 
+  // Keep prediction marker opacity tied to hit order so real collisions do not rescale every remaining dot.
   function predictionDotAlphaForIndex(index, totalHits) {
     if (totalHits <= 1) return PREDICTION_DOT_MIN_ALPHA + PREDICTION_DOT_ALPHA_RANGE;
     const clampedIndex = Math.max(0, Math.min(index, totalHits - 1));
@@ -1509,7 +1510,7 @@
   }
 
   function drawBackground() {
-    ctx.fillStyle = backgroundMode === 'none' ? SOLID_BACKGROUND_COLOR : FIELD_BACKGROUND_COLOR;
+    ctx.fillStyle = backgroundMode === 'solid' ? SOLID_BACKGROUND_COLOR : FIELD_BACKGROUND_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (wallChargeEnabled) {
@@ -1529,15 +1530,22 @@
       ? getAutoPotentialZeroReference()
       : undefined;
 
-    if (backgroundMode === 'potential') {
-      drawPotentialMap(autoZeroReference);
-    } else if (backgroundMode === 'equipotential') {
-      drawEquipotentialLines(autoZeroReference);
-    } else if (backgroundMode === 'potential-equipotential') {
-      drawPotentialMap(autoZeroReference);
-      drawEquipotentialLines(autoZeroReference);
-    } else if (backgroundMode === 'field') {
-      drawFieldLines();
+    switch (backgroundMode) {
+      case 'potential':
+        drawPotentialMap(autoZeroReference);
+        break;
+      case 'equipotential':
+        drawEquipotentialLines(autoZeroReference);
+        break;
+      case 'potential-equipotential':
+        drawPotentialMap(autoZeroReference);
+        drawEquipotentialLines(autoZeroReference);
+        break;
+      case 'solid':
+        break;
+      case 'field':
+      default:
+        drawFieldLines();
     }
   }
 
