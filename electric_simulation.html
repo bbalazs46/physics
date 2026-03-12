@@ -629,7 +629,7 @@
     potentialResolutionVal.textContent = Math.round(potentialResolution);
     fieldLineFrequencyVal.textContent = Math.round(fieldLineFrequency);
     contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
-    uniformContourStepVal.textContent = uniformContourStep % 1 === 0 ? String(Math.round(uniformContourStep)) : uniformContourStep.toFixed(1);
+    uniformContourStepVal.textContent = formatSliderValue(uniformContourStep);
     collisionPredictionCountVal.textContent = Math.round(collisionPredictionCount);
   }
 
@@ -696,6 +696,10 @@
     return getContourLevelFactors()
       .map(factor => factor * (maxAbs || 1))
       .filter(level => Math.abs(level) > MIN_CONTOUR_LEVEL_THRESHOLD);
+  }
+
+  function formatSliderValue(value) {
+    return value % 1 === 0 ? String(value) : value.toFixed(1);
   }
 
   function syncControlsToSelectedParticle() {
@@ -1393,9 +1397,17 @@
     return (MARCHING_SQUARE_CASES[index] || []).map(([a, b]) => [edges[a], edges[b]]);
   }
 
+  /**
+   * Calculates a clamped interpolation ratio between two scalar sample values for a target contour level.
+   * Equal endpoint values fall back to the midpoint, and the result is always limited to the cell edge range.
+   */
+  function getClampedInterpolationRatio(startValue, endValue, level) {
+    const interpolationRatio = Math.abs(endValue - startValue) < INTERPOLATION_EPSILON ? 0.5 : (level - startValue) / (endValue - startValue);
+    return Math.max(0, Math.min(1, interpolationRatio));
+  }
+
   function interpolateVertexAtLevel(start, end, level) {
-    const interpolationRatio = Math.abs(end.value - start.value) < INTERPOLATION_EPSILON ? 0.5 : (level - start.value) / (end.value - start.value);
-    const clampedRatio = Math.max(0, Math.min(1, interpolationRatio));
+    const clampedRatio = getClampedInterpolationRatio(start.value, end.value, level);
     return {
       x: start.x + (end.x - start.x) * clampedRatio,
       y: start.y + (end.y - start.y) * clampedRatio,
@@ -1403,6 +1415,10 @@
     };
   }
 
+  /**
+   * Clips a polygon against a scalar threshold while linearly interpolating any newly created edge vertices.
+   * When keepAbove is true the retained region is value >= threshold, otherwise value <= threshold.
+   */
   function clipPolygonByThreshold(polygon, threshold, keepAbove) {
     const clipped = [];
     if (polygon.length === 0) return clipped;
@@ -1425,6 +1441,9 @@
     return clipped;
   }
 
+  /**
+   * Restricts a scalar polygon to the contour band bounded by lowerBound and upperBound.
+   */
   function clipPolygonToContourBand(polygon, lowerBound, upperBound) {
     return clipPolygonByThreshold(
       clipPolygonByThreshold(polygon, lowerBound, true),
@@ -1433,6 +1452,9 @@
     );
   }
 
+  /**
+   * Fills the current polygon with the active canvas fill style when it contains a valid area.
+   */
   function fillPolygon(polygon) {
     if (polygon.length < 3) return;
     ctx.beginPath();
@@ -1445,8 +1467,7 @@
   }
 
   function interpolatePoint(x1, y1, v1, x2, y2, v2, level) {
-    const interpolationRatio = Math.abs(v2 - v1) < INTERPOLATION_EPSILON ? 0.5 : (level - v1) / (v2 - v1);
-    const clampedRatio = Math.max(0, Math.min(1, interpolationRatio));
+    const clampedRatio = getClampedInterpolationRatio(v1, v2, level);
     return {
       x: x1 + (x2 - x1) * clampedRatio,
       y: y1 + (y2 - y1) * clampedRatio
@@ -1470,6 +1491,10 @@
     return (lowerBound + upperBound) / 2;
   }
 
+  /**
+   * Renders contour bands by clipping each cell triangle to the contour intervals it actually intersects,
+   * which avoids the blocky per-rectangle fill used by the faster default mode.
+   */
   function drawPerfectContourBands(field, cols, rows, levels, maxAbs, scheme) {
     for (let ix = 0; ix < cols; ix++) {
       for (let iy = 0; iy < rows; iy++) {
