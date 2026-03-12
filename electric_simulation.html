@@ -177,9 +177,9 @@
     <div class="slider-row">
       <div class="slider-label">
         <span>Előre jelzett falütközések száma</span>
-        <span id="collisionPredictionCountVal">5</span>
+        <span id="collisionPredictionCountVal">2</span>
       </div>
-      <input type="range" id="collisionPredictionCountInput" min="0" max="12" step="1" value="5" />
+      <input type="range" id="collisionPredictionCountInput" min="0" max="12" step="1" value="2" />
     </div>
     <div class="slider-row mt-8">
       <div class="slider-label">
@@ -316,7 +316,7 @@
   const FIELD_FLOW_CYCLE = 15;
   // The physics loop advances two substeps on each ~60 FPS animation frame.
   const SIMULATION_STEPS_PER_SECOND = 120;
-  const DEFAULT_COLLISION_PREDICTION_COUNT = 5;
+  const DEFAULT_COLLISION_PREDICTION_COUNT = 2;
   const DEFAULT_COLLISION_PREDICTION_STYLE = 'fading-dots';
   const MAX_COLLISION_PREDICTION_COUNT = 12;
   const MIN_PREDICTION_STEPS = 240;
