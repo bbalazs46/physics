@@ -273,6 +273,7 @@
   const MIN_CONTOUR_LEVEL_THRESHOLD = 0.01;
   const MIN_UNIFORM_CONTOUR_STEP = 1;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
+  const CONTOUR_BAND_ALPHA = 0.34;
   const DEFAULT_TRAIL_LENGTH = 200; // Long enough to reveal motion without cluttering the field view.
   const MAX_TRAIL_SEGMENT_ALPHA = 0.42; // Keep trails visible while leaving the field rendering readable underneath.
   const TRAIL_POINT_EPSILON = 0.25;
@@ -1117,15 +1118,11 @@
     let upperBound = maxAbs;
 
     for (const level of levels) {
-      if (value <= level) {
+      if (value < level) {
         upperBound = level;
         break;
       }
       lowerBound = level;
-    }
-
-    if (Math.abs(upperBound - lowerBound) < INTERPOLATION_EPSILON) {
-      return value;
     }
 
     return (lowerBound + upperBound) / 2;
@@ -1169,7 +1166,7 @@
             + field[ix][iy + 1]
           ) / 4;
           const bandRepresentative = getContourBandRepresentative(averagePotential, levels, maxAbs);
-          ctx.fillStyle = getPotentialColor(bandRepresentative, maxAbs, 0.34, scheme);
+          ctx.fillStyle = getPotentialColor(bandRepresentative, maxAbs, CONTOUR_BAND_ALPHA, scheme);
           ctx.fillRect(x, y, potentialResolution, potentialResolution);
         }
       }
