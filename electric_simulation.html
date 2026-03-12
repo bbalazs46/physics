@@ -180,6 +180,15 @@
       </div>
       <input type="range" id="collisionPredictionCountInput" min="0" max="12" step="1" value="5" />
     </div>
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Előrejelzés stílusa</span>
+      </div>
+      <select id="collisionPredictionStyle">
+        <option value="fading-dots" selected>Halványuló piros pontok</option>
+        <option value="path-numbered">Útvonal és számozott ütközések</option>
+      </select>
+    </div>
     <div class="button-row">
       <button class="btn-neutral" id="btnPause">⏸️ Szünet</button>
       <button class="btn-neutral" id="btnReset">🔄 Reset</button>
@@ -249,6 +258,7 @@
   const fillContourBandsInput = document.getElementById('fillContourBandsInput');
   const collisionPredictionCountInput = document.getElementById('collisionPredictionCountInput');
   const collisionPredictionCountVal = document.getElementById('collisionPredictionCountVal');
+  const collisionPredictionStyleInput = document.getElementById('collisionPredictionStyle');
 
   const modeButtons = [btnMove, btnAdd, btnDelete, btnPin];
   const PALETTES = {
@@ -301,12 +311,19 @@
   const FIELD_FLOW_DASH = [3, 12];
   const FIELD_FLOW_SPEED = 0.11;
   const FIELD_FLOW_CYCLE = 15;
+  // The physics loop advances two substeps on each ~60 FPS animation frame.
+  const SIMULATION_STEPS_PER_SECOND = 120;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 5;
+  const DEFAULT_COLLISION_PREDICTION_STYLE = 'fading-dots';
   const MAX_COLLISION_PREDICTION_COUNT = 12;
   const MIN_PREDICTION_STEPS = 240;
   const MAX_PREDICTION_STEPS_PER_HIT = 1800;
   const PREDICTION_PATH_SAMPLE_INTERVAL = 2;
   const PREDICTION_MARKER_RADIUS = 9;
+  const PREDICTION_STEP_DURATION_MS = 1000 / SIMULATION_STEPS_PER_SECOND;
+  const PREDICTION_DOT_MIN_ALPHA = 0.18;
+  const PREDICTION_DOT_ALPHA_RANGE = 0.68;
+  const PREDICTION_DOT_COLOR_RGB = '255, 82, 82';
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -355,14 +372,16 @@
   let uniformContourStep = DEFAULT_UNIFORM_CONTOUR_STEP;
   let fillContourBands = true;
   let collisionPredictionCount = DEFAULT_COLLISION_PREDICTION_COUNT;
+  let collisionPredictionStyle = DEFAULT_COLLISION_PREDICTION_STYLE;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
   let cachedWallChargeSamples = [];
-  let predictedCollisionPreview = { path: [], hits: [] };
+  let predictedCollisionPreview = { path: [], hits: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
   let collisionPredictionDirty = true;
   window.addEventListener('resize', markCollisionPredictionDirty);
   collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
+  collisionPredictionStyleInput.value = collisionPredictionStyle;
 
   function radiusForMass(mass) {
     return 9 + Math.sqrt(mass) * 4;
@@ -886,6 +905,9 @@
     updateEditorValues();
   });
   collisionPredictionCountInput.addEventListener('change', markCollisionPredictionDirty);
+  collisionPredictionStyleInput.addEventListener('change', () => {
+    collisionPredictionStyle = collisionPredictionStyleInput.value;
+  });
 
   function getPos(event) {
     const rect = canvas.getBoundingClientRect();
@@ -1138,11 +1160,15 @@
     };
   }
 
-  function buildCollisionMarker(particle, wall) {
-    if (wall === 'left') return { wall, x: 0, y: particle.y };
-    if (wall === 'right') return { wall, x: canvas.width, y: particle.y };
-    if (wall === 'top') return { wall, x: particle.x, y: 0 };
-    return { wall: 'bottom', x: particle.x, y: canvas.height };
+  function buildCollisionMarker(particle, wall, stepIndex) {
+    if (wall === 'left') return { wall, x: 0, y: particle.y, stepIndex };
+    if (wall === 'right') return { wall, x: canvas.width, y: particle.y, stepIndex };
+    if (wall === 'top') return { wall, x: particle.x, y: 0, stepIndex };
+    return { wall: 'bottom', x: particle.x, y: canvas.height, stepIndex };
+  }
+
+  function predictionTimeMsForStepIndex(stepIndex) {
+    return Math.max(1, stepIndex) * PREDICTION_STEP_DURATION_MS;
   }
 
   function advanceParticleSystem(particleList, trackedEnergy, excludedParticle = null, previewState = null) {
@@ -1201,7 +1227,7 @@
       if (hitWall) {
         collisionOccurred = true;
         if (previewState && particle.id === previewState.targetId && previewState.hits.length < previewState.maxHits) {
-          previewState.hits.push(buildCollisionMarker(particle, hitWall));
+          previewState.hits.push(buildCollisionMarker(particle, hitWall, previewState.stepIndex));
         }
       }
 
@@ -1218,19 +1244,20 @@
 
   function computeCollisionPredictionPreview() {
     if (collisionPredictionCount <= 0 || !selectedParticle || selectedParticle.pinned) {
-      return { path: [], hits: [] };
+      return { path: [], hits: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
     }
 
     const simulatedParticles = particles.map(cloneParticleState);
     const simulatedTarget = simulatedParticles.find(particle => particle.id === selectedParticle.id);
     if (!simulatedTarget) {
-      return { path: [], hits: [] };
+      return { path: [], hits: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
     }
 
     const previewState = {
       targetId: simulatedTarget.id,
       maxHits: collisionPredictionCount,
-      hits: []
+      hits: [],
+      stepIndex: 0
     };
     const path = [{ x: simulatedTarget.x, y: simulatedTarget.y }];
     let simulatedTrackedEnergy = calculateTotalEnergyFor(simulatedParticles).total;
@@ -1238,6 +1265,7 @@
 
     for (let stepIndex = 0; stepIndex < maxSteps && previewState.hits.length < collisionPredictionCount; stepIndex++) {
       const hitCountBeforeStep = previewState.hits.length;
+      previewState.stepIndex = stepIndex + 1;
       const result = advanceParticleSystem(simulatedParticles, simulatedTrackedEnergy, null, previewState);
       simulatedTrackedEnergy = result.trackedEnergy;
       if (stepIndex % PREDICTION_PATH_SAMPLE_INTERVAL === 0 || previewState.hits.length > hitCountBeforeStep) {
@@ -1245,7 +1273,15 @@
       }
     }
 
-    return { path, hits: previewState.hits };
+    return {
+      path,
+      hits: previewState.hits,
+      createdAtMs: performance.now(),
+      maxPredictionTimeMs: previewState.hits.reduce(
+        (maxTimeMs, hit) => Math.max(maxTimeMs, predictionTimeMsForStepIndex(hit.stepIndex)),
+        PREDICTION_STEP_DURATION_MS
+      )
+    };
   }
 
   function step() {
@@ -1587,7 +1623,7 @@
     const preview = predictedCollisionPreview;
     if (!preview || (preview.path.length === 0 && preview.hits.length === 0)) return;
 
-    if (preview.path.length > 1) {
+    if (collisionPredictionStyle === 'path-numbered' && preview.path.length > 1) {
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(preview.path[0].x, preview.path[0].y);
@@ -1601,20 +1637,34 @@
       ctx.restore();
     }
 
+    const previewAgeMs = collisionPredictionStyle === 'path-numbered'
+      ? 0
+      : Math.max(0, performance.now() - (preview.createdAtMs || 0));
+    const maxPredictionTimeMs = collisionPredictionStyle === 'path-numbered'
+      ? PREDICTION_STEP_DURATION_MS
+      : Math.max(PREDICTION_STEP_DURATION_MS, preview.maxPredictionTimeMs || 0);
     preview.hits.forEach((hit, index) => {
       ctx.save();
       ctx.beginPath();
       ctx.arc(hit.x, hit.y, PREDICTION_MARKER_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(13, 27, 42, 0.92)';
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = '#ffffff';
-      ctx.stroke();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 11px "Segoe UI"';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(index + 1), hit.x, hit.y);
+      if (collisionPredictionStyle === 'path-numbered') {
+        ctx.fillStyle = 'rgba(13, 27, 42, 0.92)';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 11px "Segoe UI"';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(index + 1), hit.x, hit.y);
+      } else {
+        const predictionTimeMs = predictionTimeMsForStepIndex(hit.stepIndex);
+        const futureTimeRatio = Math.min(1, Math.max(0, predictionTimeMs - previewAgeMs) / maxPredictionTimeMs);
+        const alpha = PREDICTION_DOT_MIN_ALPHA + (1 - futureTimeRatio) * PREDICTION_DOT_ALPHA_RANGE;
+        ctx.fillStyle = `rgba(${PREDICTION_DOT_COLOR_RGB}, ${alpha})`;
+        ctx.fill();
+      }
       ctx.restore();
     });
   }
