@@ -47,6 +47,7 @@
         <span>Háttér mód</span>
       </div>
       <select id="backgroundMode">
+        <option value="none">Egyszínű sötétszürke háttér</option>
         <option value="equipotential">Potenciál szintvonalak</option>
         <option value="potential">Potenciál nagysága</option>
         <option value="potential-equipotential">Potenciál színe és szintvonalak</option>
@@ -196,7 +197,7 @@
   </div>
 
   <div id="status">Mozgasd a részecskéket, vagy adj hozzá új töltéseket a vásznon.</div>
-  <p id="hint">A háttér mutathatja a mezőt, a szintvonalakat, a potenciál nagyságát vagy ezek kombinációját.</p>
+  <p id="hint">A háttér lehet egyszínű sötétszürke, vagy mutathatja a mezőt, a szintvonalakat, a potenciál nagyságát vagy ezek kombinációját.</p>
 </div>
 
 <div id="canvas-container">
@@ -286,6 +287,8 @@
     classic: { positiveHue: 2, negativeHue: 218 }
   };
   // Visual density controls for the three background renderers.
+  const SOLID_BACKGROUND_COLOR = '#2b2b2b';
+  const FIELD_BACKGROUND_COLOR = '#0d1b2a';
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
   const DEFAULT_UNIFORM_CONTOUR_STEP = 4;
@@ -380,6 +383,7 @@
   let predictedCollisionPreview = { path: [], hits: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
   let collisionPredictionDirty = true;
   window.addEventListener('resize', markCollisionPredictionDirty);
+  backgroundModeInput.value = backgroundMode;
   collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
   collisionPredictionStyleInput.value = collisionPredictionStyle;
 
@@ -435,6 +439,13 @@
     return backgroundMode === 'potential'
       || backgroundMode === 'equipotential'
       || backgroundMode === 'potential-equipotential';
+  }
+
+  function predictionDotAlphaForIndex(index, totalHits) {
+    if (totalHits <= 1) return PREDICTION_DOT_MIN_ALPHA + PREDICTION_DOT_ALPHA_RANGE;
+    const clampedIndex = Math.max(0, Math.min(index, totalHits - 1));
+    const fadeRatio = clampedIndex / (totalHits - 1);
+    return PREDICTION_DOT_MIN_ALPHA + (1 - fadeRatio) * PREDICTION_DOT_ALPHA_RANGE;
   }
 
   function buildWallChargeSamples() {
@@ -1498,7 +1509,7 @@
   }
 
   function drawBackground() {
-    ctx.fillStyle = '#0d1b2a';
+    ctx.fillStyle = backgroundMode === 'none' ? SOLID_BACKGROUND_COLOR : FIELD_BACKGROUND_COLOR;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     if (wallChargeEnabled) {
@@ -1525,7 +1536,7 @@
     } else if (backgroundMode === 'potential-equipotential') {
       drawPotentialMap(autoZeroReference);
       drawEquipotentialLines(autoZeroReference);
-    } else {
+    } else if (backgroundMode === 'field') {
       drawFieldLines();
     }
   }
@@ -1637,12 +1648,6 @@
       ctx.restore();
     }
 
-    const previewAgeMs = collisionPredictionStyle === 'path-numbered'
-      ? 0
-      : Math.max(0, performance.now() - (preview.createdAtMs || 0));
-    const maxPredictionTimeMs = collisionPredictionStyle === 'path-numbered'
-      ? PREDICTION_STEP_DURATION_MS
-      : Math.max(PREDICTION_STEP_DURATION_MS, preview.maxPredictionTimeMs || 0);
     preview.hits.forEach((hit, index) => {
       ctx.save();
       ctx.beginPath();
@@ -1659,9 +1664,7 @@
         ctx.textBaseline = 'middle';
         ctx.fillText(String(index + 1), hit.x, hit.y);
       } else {
-        const predictionTimeMs = predictionTimeMsForStepIndex(hit.stepIndex);
-        const futureTimeRatio = Math.min(1, Math.max(0, predictionTimeMs - previewAgeMs) / maxPredictionTimeMs);
-        const alpha = PREDICTION_DOT_MIN_ALPHA + (1 - futureTimeRatio) * PREDICTION_DOT_ALPHA_RANGE;
+        const alpha = predictionDotAlphaForIndex(index, preview.hits.length);
         ctx.fillStyle = `rgba(${PREDICTION_DOT_COLOR_RGB}, ${alpha})`;
         ctx.fill();
       }
