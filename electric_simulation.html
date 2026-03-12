@@ -344,12 +344,19 @@
   const MAGNETISM_SIDE_STEP = 7;
   const MAGNETISM_LONGITUDINAL_STEP = 12;
   const MAGNETISM_SEGMENT_LENGTH = 13;
+  const MAGNETISM_HALF_SEGMENT_LENGTH = MAGNETISM_SEGMENT_LENGTH * 0.5;
   const MAGNETISM_SIDE_RADIUS_BONUS = 60;
   const MAGNETISM_SPEED_RADIUS_SCALE = 8;
+  const MAGNETISM_SPEED_RADIUS_CAP_FACTOR = 0.15;
   const MAGNETISM_FORWARD_RANGE_FACTOR = 1.8;
   const MAGNETISM_MAX_FORWARD_RANGE = 180;
   const MAGNETISM_ALPHA_SCALE = 24;
   const MAGNETISM_MAX_ALPHA = 0.16;
+  const MAGNETISM_MIN_ALPHA = 0.003;
+  const MAGNETISM_INNER_RADIUS_FACTOR = 0.75;
+  const MAGNETISM_MIN_LINE_WIDTH = 2;
+  const MAGNETISM_LINE_WIDTH_SCALE = 0.06;
+  const MAGNETISM_LINE_WIDTH_BASE = 1.8;
   // The physics loop advances in fixed-duration simulation steps based on elapsed time.
   const SIMULATION_STEPS_PER_SECOND = 120;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 0;
@@ -1835,8 +1842,17 @@
       const normalY = directionX;
       const outerRadius = particle.r
         + MAGNETISM_SIDE_RADIUS_BONUS
-        + Math.min(MAGNETISM_MAX_FORWARD_RANGE * 0.15, speed * MAGNETISM_SPEED_RADIUS_SCALE);
+        + Math.min(MAGNETISM_MAX_FORWARD_RANGE * MAGNETISM_SPEED_RADIUS_CAP_FACTOR, speed * MAGNETISM_SPEED_RADIUS_SCALE);
       const forwardRange = Math.min(MAGNETISM_MAX_FORWARD_RANGE, outerRadius * MAGNETISM_FORWARD_RANGE_FACTOR);
+      const maxExtent = forwardRange + outerRadius;
+      if (
+        particle.x < -maxExtent
+        || particle.y < -maxExtent
+        || particle.x > canvas.width + maxExtent
+        || particle.y > canvas.height + maxExtent
+      ) {
+        continue;
+      }
       const leftColor = particle.charge >= 0 ? palette.positive : palette.negative;
       const rightColor = particle.charge >= 0 ? palette.negative : palette.positive;
 
@@ -1845,32 +1861,29 @@
         ctx.shadowColor = color;
         ctx.shadowBlur = 10;
 
-        for (let sideDistance = particle.r * 0.75; sideDistance <= outerRadius; sideDistance += MAGNETISM_SIDE_STEP) {
-          const lineWidth = Math.max(2, (outerRadius - sideDistance) * 0.06 + 1.8);
+        for (let sideDistance = particle.r * MAGNETISM_INNER_RADIUS_FACTOR; sideDistance <= outerRadius; sideDistance += MAGNETISM_SIDE_STEP) {
+          const lineWidth = Math.max(MAGNETISM_MIN_LINE_WIDTH, (outerRadius - sideDistance) * MAGNETISM_LINE_WIDTH_SCALE + MAGNETISM_LINE_WIDTH_BASE);
           for (let longitudinal = -forwardRange; longitudinal <= forwardRange; longitudinal += MAGNETISM_LONGITUDINAL_STEP) {
             const radialDistance = Math.hypot(sideDistance, longitudinal);
             const alpha = Math.min(
               MAGNETISM_MAX_ALPHA,
               (MAGNETISM_ALPHA_SCALE * speed) / (Math.max(1, sideDistance) * Math.max(1, radialDistance))
             );
-            if (alpha < 0.003) continue;
+            if (alpha < MAGNETISM_MIN_ALPHA) continue;
 
             const centerX = particle.x + normalX * sideSign * sideDistance + directionX * longitudinal;
             const centerY = particle.y + normalY * sideSign * sideDistance + directionY * longitudinal;
-            if (centerX < -MAGNETISM_SEGMENT_LENGTH || centerY < -MAGNETISM_SEGMENT_LENGTH || centerX > canvas.width + MAGNETISM_SEGMENT_LENGTH || centerY > canvas.height + MAGNETISM_SEGMENT_LENGTH) {
-              continue;
-            }
 
             ctx.globalAlpha = alpha;
             ctx.lineWidth = lineWidth;
             ctx.beginPath();
             ctx.moveTo(
-              centerX - directionX * MAGNETISM_SEGMENT_LENGTH * 0.5,
-              centerY - directionY * MAGNETISM_SEGMENT_LENGTH * 0.5
+              centerX - directionX * MAGNETISM_HALF_SEGMENT_LENGTH,
+              centerY - directionY * MAGNETISM_HALF_SEGMENT_LENGTH
             );
             ctx.lineTo(
-              centerX + directionX * MAGNETISM_SEGMENT_LENGTH * 0.5,
-              centerY + directionY * MAGNETISM_SEGMENT_LENGTH * 0.5
+              centerX + directionX * MAGNETISM_HALF_SEGMENT_LENGTH,
+              centerY + directionY * MAGNETISM_HALF_SEGMENT_LENGTH
             );
             ctx.stroke();
           }
