@@ -1491,11 +1491,46 @@
     return (lowerBound + upperBound) / 2;
   }
 
+  function findFirstSortedIndexAtLeast(values, target) {
+    let low = 0;
+    let high = values.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (values[mid] < target) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    return low;
+  }
+
+  function findFirstSortedIndexAbove(values, target) {
+    let low = 0;
+    let high = values.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (values[mid] <= target) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    return low;
+  }
+
   /**
    * Renders contour bands by clipping each cell triangle to the contour intervals it actually intersects,
    * which avoids the blocky per-rectangle fill used by the faster default mode.
    */
   function drawPerfectContourBands(field, cols, rows, levels, maxAbs, scheme) {
+    const bandUpperBounds = levels.concat(maxAbs);
+    const bandLowerBounds = [-maxAbs].concat(levels);
+    const bandFillStyles = bandLowerBounds.map((lowerBound, bandIndex) => {
+      const upperBound = bandUpperBounds[bandIndex];
+      return getPotentialColor((lowerBound + upperBound) / 2, maxAbs, CONTOUR_BAND_ALPHA, scheme);
+    });
+
     for (let ix = 0; ix < cols; ix++) {
       for (let iy = 0; iy < rows; iy++) {
         const x = ix * potentialResolution;
@@ -1506,28 +1541,38 @@
         const bottomLeft = { x, y: y + potentialResolution, value: field[ix][iy + 1] };
         const minValue = Math.min(topLeft.value, topRight.value, bottomRight.value, bottomLeft.value);
         const maxValue = Math.max(topLeft.value, topRight.value, bottomRight.value, bottomLeft.value);
+        const startBandIndex = findFirstSortedIndexAtLeast(bandUpperBounds, minValue - INTERPOLATION_EPSILON);
+        const endBandIndex = findFirstSortedIndexAbove(bandLowerBounds, maxValue + INTERPOLATION_EPSILON) - 1;
+        if (startBandIndex > endBandIndex) continue;
+
         const triangles = [
-          [topLeft, topRight, bottomRight],
-          [topLeft, bottomRight, bottomLeft]
+          {
+            vertices: [topLeft, topRight, bottomRight],
+            minValue: Math.min(topLeft.value, topRight.value, bottomRight.value),
+            maxValue: Math.max(topLeft.value, topRight.value, bottomRight.value)
+          },
+          {
+            vertices: [topLeft, bottomRight, bottomLeft],
+            minValue: Math.min(topLeft.value, bottomRight.value, bottomLeft.value),
+            maxValue: Math.max(topLeft.value, bottomRight.value, bottomLeft.value)
+          }
         ];
-        let lowerBound = -maxAbs;
 
-        for (let bandIndex = 0; bandIndex <= levels.length; bandIndex++) {
-          const upperBound = bandIndex < levels.length ? levels[bandIndex] : maxAbs;
-          if (upperBound < minValue - INTERPOLATION_EPSILON) {
-            lowerBound = upperBound;
-            continue;
-          }
-          if (lowerBound > maxValue + INTERPOLATION_EPSILON) {
-            break;
-          }
+        for (let bandIndex = startBandIndex; bandIndex <= endBandIndex; bandIndex++) {
+          const lowerBound = bandLowerBounds[bandIndex];
+          const upperBound = bandUpperBounds[bandIndex];
+          ctx.fillStyle = bandFillStyles[bandIndex];
 
-          ctx.fillStyle = getPotentialColor((lowerBound + upperBound) / 2, maxAbs, CONTOUR_BAND_ALPHA, scheme);
           for (const triangle of triangles) {
-            fillPolygon(clipPolygonToContourBand(triangle, lowerBound, upperBound));
+            if (triangle.maxValue < lowerBound - INTERPOLATION_EPSILON || triangle.minValue > upperBound + INTERPOLATION_EPSILON) {
+              continue;
+            }
+            if (triangle.minValue >= lowerBound - INTERPOLATION_EPSILON && triangle.maxValue <= upperBound + INTERPOLATION_EPSILON) {
+              fillPolygon(triangle.vertices);
+              continue;
+            }
+            fillPolygon(clipPolygonToContourBand(triangle.vertices, lowerBound, upperBound));
           }
-
-          lowerBound = upperBound;
         }
       }
     }
