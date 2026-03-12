@@ -164,7 +164,7 @@
     </div>
 
     <div class="toggle-btn mt-8">
-      <input type="checkbox" id="fillContourBandsInput" />
+      <input type="checkbox" id="fillContourBandsInput" checked />
       <label for="fillContourBandsInput">Szintvonalak közötti terület kitöltése</label>
     </div>
 
@@ -337,7 +337,7 @@
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
   let uniformContoursEnabled = true;
   let uniformContourStep = DEFAULT_UNIFORM_CONTOUR_STEP;
-  let fillContourBands = false;
+  let fillContourBands = true;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
