@@ -298,7 +298,7 @@
   const CONTOUR_BAND_ALPHA = 0.34;
   const DEFAULT_TRAIL_LENGTH = 1000; // Long enough to reveal motion without cluttering the field view.
   const MAX_TRAIL_SEGMENT_ALPHA = 0.42; // Keep trails visible while leaving the field rendering readable underneath.
-  const TRAIL_POINT_EPSILON = 0.25;
+  const TRAIL_POINT_EPSILON = 2.25;
   const TRAIL_POINT_EPSILON_SQ = TRAIL_POINT_EPSILON * TRAIL_POINT_EPSILON;
   const MIN_TRAIL_LINE_WIDTH = 1.2;
   const TRAIL_LINE_WIDTH_FACTOR = 0.45;
@@ -1712,7 +1712,7 @@
 
     const positive = makeParticle(cx - 120, cy, 2, 2);
     const negative = makeParticle(cx + 120, cy, 2, -4);
-    const weakPositive = makeParticle(cx+235, cy - 200, 2.4, 2, 2, 0);
+    const weakPositive = makeParticle(cx+235, cy - 200, 2.4, 2, 2, 1);
     positive.pinned = true;
     negative.pinned = true;
 
