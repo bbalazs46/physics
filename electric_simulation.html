@@ -163,6 +163,11 @@
       <input type="range" id="uniformContourStepInput" min="1" max="80" step="1" value="4" />
     </div>
 
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="fillContourBandsInput" />
+      <label for="fillContourBandsInput">Szintvonalak közötti terület kitöltése</label>
+    </div>
+
     <p class="control-note mt-8">Az 1-hez közeli potenciálfelbontás részletesebb, de lassabb megjelenítést okozhat.</p>
   </div>
 
@@ -234,6 +239,7 @@
   const uniformContoursInput = document.getElementById('uniformContoursInput');
   const uniformContourStepInput = document.getElementById('uniformContourStepInput');
   const uniformContourStepVal = document.getElementById('uniformContourStepVal');
+  const fillContourBandsInput = document.getElementById('fillContourBandsInput');
 
   const modeButtons = [btnMove, btnAdd, btnDelete, btnPin];
   const PALETTES = {
@@ -330,6 +336,7 @@
   let contourLineFrequency = DEFAULT_CONTOUR_LINE_FREQUENCY;
   let uniformContoursEnabled = true;
   let uniformContourStep = DEFAULT_UNIFORM_CONTOUR_STEP;
+  let fillContourBands = false;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
@@ -814,6 +821,10 @@
     updateEditorValues();
   });
 
+  fillContourBandsInput.addEventListener('change', () => {
+    fillContourBands = fillContourBandsInput.checked;
+  });
+
   function getPos(event) {
     const rect = canvas.getBoundingClientRect();
     if (event.touches) {
@@ -1099,6 +1110,27 @@
     };
   }
 
+  function getContourBandRepresentative(value, levels, maxAbs) {
+    if (levels.length === 0) return value;
+
+    let lowerBound = -maxAbs;
+    let upperBound = maxAbs;
+
+    for (const level of levels) {
+      if (value <= level) {
+        upperBound = level;
+        break;
+      }
+      lowerBound = level;
+    }
+
+    if (Math.abs(upperBound - lowerBound) < INTERPOLATION_EPSILON) {
+      return value;
+    }
+
+    return (lowerBound + upperBound) / 2;
+  }
+
   function drawEquipotentialLines(autoZeroReference = undefined) {
     const cols = Math.ceil(canvas.width / potentialResolution);
     const rows = Math.ceil(canvas.height / potentialResolution);
@@ -1124,6 +1156,24 @@
     }
 
     const levels = getContourLevels(maxAbs);
+
+    if (fillContourBands && levels.length > 0) {
+      for (let ix = 0; ix < cols; ix++) {
+        for (let iy = 0; iy < rows; iy++) {
+          const x = ix * potentialResolution;
+          const y = iy * potentialResolution;
+          const averagePotential = (
+            field[ix][iy]
+            + field[ix + 1][iy]
+            + field[ix + 1][iy + 1]
+            + field[ix][iy + 1]
+          ) / 4;
+          const bandRepresentative = getContourBandRepresentative(averagePotential, levels, maxAbs);
+          ctx.fillStyle = getPotentialColor(bandRepresentative, maxAbs, 0.34, scheme);
+          ctx.fillRect(x, y, potentialResolution, potentialResolution);
+        }
+      }
+    }
 
     for (const level of levels) {
       ctx.beginPath();
