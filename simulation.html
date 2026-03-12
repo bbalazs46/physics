@@ -482,9 +482,22 @@
   }
 
   // ─── Main loop ────────────────────────────────────────────────────────────────
-  const SUBSTEPS = 4;
-  function loop() {
-    for (let i = 0; i < SUBSTEPS; i++) step();
+  const SIMULATION_STEPS_PER_SECOND = 240;
+  const FIXED_STEP_MS = 1000 / SIMULATION_STEPS_PER_SECOND;
+  const MAX_FRAME_DELTA_MS = 100;
+  let previousFrameTime = null;
+  let accumulatedStepTime = 0;
+  function loop(frameTime) {
+    if (previousFrameTime === null) {
+      previousFrameTime = frameTime;
+    } else {
+      accumulatedStepTime += Math.min(frameTime - previousFrameTime, MAX_FRAME_DELTA_MS);
+      previousFrameTime = frameTime;
+      while (accumulatedStepTime >= FIXED_STEP_MS) {
+        step();
+        accumulatedStepTime -= FIXED_STEP_MS;
+      }
+    }
     draw();
     requestAnimationFrame(loop);
   }
@@ -508,7 +521,7 @@
 
   initDemo();
   setMode('move');
-  loop();
+  requestAnimationFrame(loop);
 </script>
 </body>
 </html>
