@@ -106,7 +106,7 @@
         <span>Nyomvonal hossza</span>
         <span id="trailLengthVal">2000</span>
       </div>
-      <input type="range" id="trailLengthInput" min="0" max="10000" step="1" value="2000" />
+      <input type="range" id="trailLengthInput" min="0" max="1000" step="1" value="2000" />
     </div>
 
     <div class="toggle-btn mt-8">
@@ -307,7 +307,7 @@
   const DEFAULT_WALL_CHARGE_MAGNITUDE = 0.4;
   const DEFAULT_POTENTIAL_GRID_RESOLUTION = 6;
   const DEFAULT_CONTOUR_LINE_FREQUENCY = 10;
-  const DEFAULT_UNIFORM_CONTOUR_STEP = 10;
+  const DEFAULT_UNIFORM_CONTOUR_STEP = canvas.width/100.0;
   const DEFAULT_UNIFORM_CONTOURS_ENABLED = true;
   const DEFAULT_FILL_CONTOUR_BANDS = true;
   const DEFAULT_PERFECT_CONTOUR_FILL = false;
@@ -315,7 +315,7 @@
   const MIN_UNIFORM_CONTOUR_STEP = .1;
   const MAX_CONTOUR_LEVEL_SCALE = 0.9;
   const CONTOUR_BAND_ALPHA = 0.34;
-  const DEFAULT_TRAIL_LENGTH = 1000; // Long enough to reveal motion without cluttering the field view.
+  const DEFAULT_TRAIL_LENGTH = 150; // Long enough to reveal motion without cluttering the field view.
   const MAX_TRAIL_SEGMENT_ALPHA = 0.42; // Keep trails visible while leaving the field rendering readable underneath.
   const TRAIL_POINT_EPSILON = 2.25;
   const TRAIL_POINT_EPSILON_SQ = TRAIL_POINT_EPSILON * TRAIL_POINT_EPSILON;
