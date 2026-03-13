@@ -401,6 +401,7 @@
   const ORBIT_INDICATOR_ARROW_ALPHA_BOOST = 0.08;
   const ORBIT_INDICATOR_TURN_SPACING = 10;
   const ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS = Math.PI / 14;
+  const ORBIT_INDICATOR_DIRECTION_SAMPLE_RADIANS = ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -2172,10 +2173,7 @@
       const arrowAlpha = alpha * Math.max(0, Math.min(1, totalAngleMagnitude / ORBIT_INDICATOR_ARROW_FADE_END_RADIANS));
       const spiralDirection = remainingAngle >= 0 ? 1 : -1;
       const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS));
-      let previousPoint = null;
       let finalPoint = null;
-      let finalDirectionX = 0;
-      let finalDirectionY = 0;
       const arrowSize = 8;
 
       ctx.save();
@@ -2194,18 +2192,24 @@
         } else {
           ctx.lineTo(x, y);
         }
-        previousPoint = finalPoint;
         finalPoint = { x, y };
       }
       ctx.stroke();
 
-      if (!finalPoint || !previousPoint) {
+      if (!finalPoint) {
         ctx.restore();
         return;
       }
 
-      finalDirectionX = finalPoint.x - previousPoint.x;
-      finalDirectionY = finalPoint.y - previousPoint.y;
+      const finalRadius = baseRadius + (totalAngleMagnitude / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
+      const finalAngle = currentAngle + remainingAngle;
+      const directionSampleAngle = Math.min(totalAngleMagnitude, ORBIT_INDICATOR_DIRECTION_SAMPLE_RADIANS);
+      const previousAngle = finalAngle - spiralDirection * directionSampleAngle;
+      const previousRadius = finalRadius - (directionSampleAngle / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
+      const previousX = otherParticle.x + Math.cos(previousAngle) * previousRadius;
+      const previousY = otherParticle.y + Math.sin(previousAngle) * previousRadius;
+      const finalDirectionX = finalPoint.x - previousX;
+      const finalDirectionY = finalPoint.y - previousY;
       const finalDirectionLength = Math.hypot(finalDirectionX, finalDirectionY) || 1;
       const tangentX = finalDirectionX / finalDirectionLength;
       const tangentY = finalDirectionY / finalDirectionLength;
