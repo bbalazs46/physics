@@ -2226,11 +2226,13 @@
         return;
       }
 
+      const tipX = finalPoint.x + tangentX * arrowSize;
+      const tipY = finalPoint.y + tangentY * arrowSize;
       ctx.fillStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${Math.min(1, arrowAlpha + ORBIT_INDICATOR_ARROW_ALPHA_BOOST)})`;
       ctx.beginPath();
-      ctx.moveTo(finalPoint.x, finalPoint.y);
-      ctx.lineTo(finalPoint.x - tangentX * arrowSize - normalX * (arrowSize * 0.45), finalPoint.y - tangentY * arrowSize - normalY * (arrowSize * 0.45));
-      ctx.lineTo(finalPoint.x - tangentX * arrowSize + normalX * (arrowSize * 0.45), finalPoint.y - tangentY * arrowSize + normalY * (arrowSize * 0.45));
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(finalPoint.x - normalX * (arrowSize * 0.45), finalPoint.y - normalY * (arrowSize * 0.45));
+      ctx.lineTo(finalPoint.x + normalX * (arrowSize * 0.45), finalPoint.y + normalY * (arrowSize * 0.45));
       ctx.closePath();
       ctx.fill();
       ctx.restore();
