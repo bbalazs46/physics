@@ -2180,7 +2180,7 @@
       const arrowSize = 8;
       const labelAngle = currentAngle + remainingAngle * 0.5;
       const labelRadius = orbitRadius + ORBIT_INDICATOR_TEXT_OFFSET;
-      const remainingTurns = Math.abs(remainingAngle) / FULL_TURN_RADIANS;
+      const remainingTurnCount = Math.abs(remainingAngle) / FULL_TURN_RADIANS;
 
       ctx.save();
       ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${alpha})`;
@@ -2201,7 +2201,7 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(
-        `${formatOrbitTurnCount(remainingTurns)}×`,
+        `${formatOrbitTurnCount(remainingTurnCount)}×`,
         otherParticle.x + Math.cos(labelAngle) * labelRadius,
         otherParticle.y + Math.sin(labelAngle) * labelRadius
       );
