@@ -1977,7 +1977,8 @@
       const collisionAngle = Math.atan2(collisionDirectionY, collisionDirectionX);
       const currentDirectionX = selectedParticle.x - otherParticle.x;
       const currentDirectionY = selectedParticle.y - otherParticle.y;
-      if (Math.hypot(currentDirectionX, currentDirectionY) < 1e-6) return;
+      const currentDirectionLength = Math.hypot(currentDirectionX, currentDirectionY);
+      if (currentDirectionLength < 1e-6) return;
       const currentAngle = Math.atan2(currentDirectionY, currentDirectionX);
       const predictedStartAngle = collisionAngle - remainingAngle;
       const angleOffset = normalizeAngleDelta(currentAngle - predictedStartAngle);
