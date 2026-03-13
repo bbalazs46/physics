@@ -397,11 +397,11 @@
   const ORBIT_INDICATOR_COLOR_RGB = '255, 240, 170';
   const ORBIT_INDICATOR_RADIUS_OFFSET = 12;
   const ORBIT_INDICATOR_MIN_SWEEP_RADIANS = Math.PI / 10;
+  const ORBIT_INDICATOR_ARROW_FADE_START_RADIANS = Math.PI;
   const ORBIT_INDICATOR_ARROW_FADE_END_RADIANS = Math.PI / 2;
   const ORBIT_INDICATOR_ARROW_ALPHA_BOOST = 0.08;
   const ORBIT_INDICATOR_TURN_SPACING = 10;
   const ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS = Math.PI / 14;
-  const ORBIT_INDICATOR_DIRECTION_SAMPLE_RADIANS = ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -2158,6 +2158,7 @@
     if (!selectedParticle || !preview.orbitIndicators || preview.orbitIndicators.length === 0) return;
 
     const elapsedSteps = Math.max(0, (performance.now() - preview.createdAtMs) / PREDICTION_STEP_DURATION_MS);
+    const activeCollisionHit = preview.hits[0] || null;
     preview.orbitIndicators.forEach(indicator => {
       const otherParticle = particles.find(particle => particle.id === indicator.particleId);
       if (!otherParticle || otherParticle === selectedParticle) return;
@@ -2170,8 +2171,14 @@
       const baseRadius = otherParticle.r + ORBIT_INDICATOR_RADIUS_OFFSET;
       const alpha = Math.max(0.14, Math.min(0.9, Math.abs(remainingAngle / indicator.totalAngle)));
       const totalAngleMagnitude = Math.abs(remainingAngle);
-      const arrowAlpha = alpha * Math.max(0, Math.min(1, totalAngleMagnitude / ORBIT_INDICATOR_ARROW_FADE_END_RADIANS));
-      const spiralDirection = remainingAngle >= 0 ? 1 : -1;
+      const arrowAlpha = alpha * Math.max(
+        0,
+        Math.min(
+          1,
+          (totalAngleMagnitude - ORBIT_INDICATOR_ARROW_FADE_END_RADIANS)
+            / (ORBIT_INDICATOR_ARROW_FADE_START_RADIANS - ORBIT_INDICATOR_ARROW_FADE_END_RADIANS)
+        )
+      );
       const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS));
       let finalPoint = null;
       const arrowSize = 8;
@@ -2182,9 +2189,10 @@
       ctx.beginPath();
       for (let segmentIndex = 0; segmentIndex <= segmentCount; segmentIndex++) {
         const progress = segmentIndex / segmentCount;
-        const angleOffset = remainingAngle * progress;
+        const reversedProgress = 1 - progress;
+        const angleOffset = remainingAngle * reversedProgress;
         const angle = currentAngle + angleOffset;
-        const radius = baseRadius + (totalAngleMagnitude * progress / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
+        const radius = baseRadius + (totalAngleMagnitude * reversedProgress / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
         const x = otherParticle.x + Math.cos(angle) * radius;
         const y = otherParticle.y + Math.sin(angle) * radius;
         if (segmentIndex === 0) {
@@ -2201,20 +2209,18 @@
         return;
       }
 
-      const finalRadius = baseRadius + (totalAngleMagnitude / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
-      const finalAngle = currentAngle + remainingAngle;
-      const directionSampleAngle = Math.min(totalAngleMagnitude, ORBIT_INDICATOR_DIRECTION_SAMPLE_RADIANS);
-      const previousAngle = finalAngle - spiralDirection * directionSampleAngle;
-      const previousRadius = finalRadius - (directionSampleAngle / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
-      const previousX = otherParticle.x + Math.cos(previousAngle) * previousRadius;
-      const previousY = otherParticle.y + Math.sin(previousAngle) * previousRadius;
-      const finalDirectionX = finalPoint.x - previousX;
-      const finalDirectionY = finalPoint.y - previousY;
+      if (!activeCollisionHit) {
+        ctx.restore();
+        return;
+      }
+
+      const finalDirectionX = activeCollisionHit.x - finalPoint.x;
+      const finalDirectionY = activeCollisionHit.y - finalPoint.y;
       const finalDirectionLength = Math.hypot(finalDirectionX, finalDirectionY) || 1;
       const tangentX = finalDirectionX / finalDirectionLength;
       const tangentY = finalDirectionY / finalDirectionLength;
-      const normalX = spiralDirection >= 0 ? -tangentY : tangentY;
-      const normalY = spiralDirection >= 0 ? tangentX : -tangentX;
+      const normalX = -tangentY;
+      const normalY = tangentX;
       if (arrowAlpha <= 0) {
         ctx.restore();
         return;
