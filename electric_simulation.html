@@ -177,7 +177,7 @@
     <div class="slider-row mt-8">
       <div class="slider-label">
         <span>Mágneses effekt erőssége</span>
-        <span id="magnetismStrengthVal">100%</span>
+        <span id="magnetismStrengthVal" aria-live="polite">100%</span>
       </div>
       <input type="range" id="magnetismStrengthInput" min="0" max="100" step="1" value="100" />
     </div>
@@ -1848,6 +1848,7 @@
     const palette = getMagnetismPalette();
     const strengthAlphaScale = MAGNETISM_ALPHA_SCALE * magnetismStrength;
     const strengthMaxAlpha = MAGNETISM_MAX_ALPHA * magnetismStrength;
+    const clampedStrengthMaxAlpha = Math.max(Number.EPSILON, strengthMaxAlpha);
     const strengthShadowBlur = 10 * Math.max(0.35, magnetismStrength);
 
     ctx.save();
@@ -1908,7 +1909,7 @@
 
             const bucketIndex = Math.min(
               MAGNETISM_ALPHA_BUCKETS - 1,
-              Math.floor((alpha / strengthMaxAlpha) * MAGNETISM_ALPHA_BUCKETS)
+              Math.floor((alpha / clampedStrengthMaxAlpha) * MAGNETISM_ALPHA_BUCKETS)
             );
             alphaBuckets[bucketIndex].push(centerX, centerY);
           }
@@ -1919,15 +1920,15 @@
             ctx.lineWidth = lineWidth;
             ctx.beginPath();
             for (let index = 0; index < segments.length; index += 2) {
-              const centerX = segments[index];
-              const centerY = segments[index + 1];
+              const segmentCenterX = segments[index];
+              const segmentCenterY = segments[index + 1];
               ctx.moveTo(
-                centerX - directionX * MAGNETISM_HALF_SEGMENT_LENGTH,
-                centerY - directionY * MAGNETISM_HALF_SEGMENT_LENGTH
+                segmentCenterX - directionX * MAGNETISM_HALF_SEGMENT_LENGTH,
+                segmentCenterY - directionY * MAGNETISM_HALF_SEGMENT_LENGTH
               );
               ctx.lineTo(
-                centerX + directionX * MAGNETISM_HALF_SEGMENT_LENGTH,
-                centerY + directionY * MAGNETISM_HALF_SEGMENT_LENGTH
+                segmentCenterX + directionX * MAGNETISM_HALF_SEGMENT_LENGTH,
+                segmentCenterY + directionY * MAGNETISM_HALF_SEGMENT_LENGTH
               );
             }
             ctx.stroke();
