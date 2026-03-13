@@ -182,6 +182,14 @@
       <input type="range" id="magnetismStrengthInput" min="0" max="100" step="1" value="100" />
     </div>
 
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Mágneses nyom láthatósága</span>
+        <span id="magnetismPersistMsVal" aria-live="polite">2 s</span>
+      </div>
+      <input type="range" id="magnetismPersistMsInput" min="0" max="5000" step="100" value="2000" />
+    </div>
+
     <div class="toggle-btn mt-8">
       <input type="checkbox" id="perfectContourFillInput" />
       <label for="perfectContourFillInput">Tökéletes felbontású szintvonal-kitöltés</label>
@@ -278,6 +286,8 @@
   const magnetismShowInput = document.getElementById('magnetismShowInput');
   const magnetismStrengthInput = document.getElementById('magnetismStrengthInput');
   const magnetismStrengthVal = document.getElementById('magnetismStrengthVal');
+  const magnetismPersistMsInput = document.getElementById('magnetismPersistMsInput');
+  const magnetismPersistMsVal = document.getElementById('magnetismPersistMsVal');
   const perfectContourFillInput = document.getElementById('perfectContourFillInput');
   const collisionPredictionCountInput = document.getElementById('collisionPredictionCountInput');
   const collisionPredictionCountVal = document.getElementById('collisionPredictionCountVal');
@@ -328,6 +338,7 @@
   const DEFAULT_FILL_CONTOUR_BANDS = true;
   const DEFAULT_MAGNETISM_SHOW = false;
   const DEFAULT_MAGNETISM_STRENGTH = 1;
+  const DEFAULT_MAGNETISM_PERSIST_MS = 2000;
   const DEFAULT_PERFECT_CONTOUR_FILL = false;
   const MIN_CONTOUR_LEVEL_THRESHOLD = 0.01;
   const MIN_UNIFORM_CONTOUR_STEP = .1;
@@ -431,6 +442,7 @@
   let fillContourBands = DEFAULT_FILL_CONTOUR_BANDS;
   let magnetismShowEnabled = DEFAULT_MAGNETISM_SHOW;
   let magnetismStrength = DEFAULT_MAGNETISM_STRENGTH;
+  let magnetismPersistMs = DEFAULT_MAGNETISM_PERSIST_MS;
   let perfectContourFillEnabled = DEFAULT_PERFECT_CONTOUR_FILL;
   let collisionPredictionCount = DEFAULT_COLLISION_PREDICTION_COUNT;
   let collisionPredictionStyle = DEFAULT_COLLISION_PREDICTION_STYLE;
@@ -462,6 +474,7 @@
     fillContourBandsInput.checked = fillContourBands;
     magnetismShowInput.checked = magnetismShowEnabled;
     magnetismStrengthInput.value = String(Math.round(magnetismStrength * 100));
+    magnetismPersistMsInput.value = String(magnetismPersistMs);
     perfectContourFillInput.checked = perfectContourFillEnabled;
     collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
     collisionPredictionCountInput.value = String(collisionPredictionCount);
@@ -656,7 +669,11 @@
       charge,
       pinned: false,
       r: radiusForMass(mass),
-      trail: []
+      trail: [],
+      magnetismLastActiveTime: performance.now(),
+      magnetismLastVx: vx,
+      magnetismLastVy: vy,
+      magnetismLastSpeed: Math.hypot(vx, vy)
     };
     return particle;
   }
@@ -675,6 +692,7 @@
     contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
     uniformContourStepVal.textContent = formatSliderValue(uniformContourStep);
     magnetismStrengthVal.textContent = `${Math.round(magnetismStrength * 100)}%`;
+    magnetismPersistMsVal.textContent = magnetismPersistMs <= 0 ? '0 s' : `${formatSliderValue(magnetismPersistMs / 1000)} s`;
     collisionPredictionCountVal.textContent = Math.round(collisionPredictionCount);
   }
 
@@ -1010,6 +1028,11 @@
 
   magnetismStrengthInput.addEventListener('input', () => {
     magnetismStrength = parseInt(magnetismStrengthInput.value, 10) / 100;
+    updateEditorValues();
+  });
+
+  magnetismPersistMsInput.addEventListener('input', () => {
+    magnetismPersistMs = parseInt(magnetismPersistMsInput.value, 10);
     updateEditorValues();
   });
 
@@ -1409,6 +1432,16 @@
 
     const result = advanceParticleSystem(particles, trackedTotalEnergy, dragged);
     trackedTotalEnergy = result.trackedEnergy;
+    const now = performance.now();
+    for (const particle of particles) {
+      const speed = Math.hypot(particle.vx, particle.vy);
+      if (speed >= MAGNETISM_MIN_SPEED) {
+        particle.magnetismLastActiveTime = now;
+        particle.magnetismLastVx = particle.vx;
+        particle.magnetismLastVy = particle.vy;
+        particle.magnetismLastSpeed = speed;
+      }
+    }
     if (result.collisionOccurred) {
       markCollisionPredictionDirty();
     }
@@ -1848,8 +1881,8 @@
     const palette = getMagnetismPalette();
     const strengthAlphaScale = MAGNETISM_ALPHA_SCALE * magnetismStrength;
     const strengthMaxAlpha = MAGNETISM_MAX_ALPHA * magnetismStrength;
-    const clampedStrengthMaxAlpha = Math.max(Number.EPSILON, strengthMaxAlpha);
     const strengthShadowBlur = 10 * Math.max(0.35, magnetismStrength);
+    const now = performance.now();
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -1857,11 +1890,24 @@
     ctx.lineJoin = 'round';
 
     for (const particle of particles) {
-      const speed = Math.hypot(particle.vx, particle.vy);
-      if (speed < MAGNETISM_MIN_SPEED) continue;
+      const currentSpeed = Math.hypot(particle.vx, particle.vy);
+      const elapsedSinceActive = now - particle.magnetismLastActiveTime;
+      const hasPersistentTrace = magnetismPersistMs > 0
+        && Number.isFinite(particle.magnetismLastActiveTime)
+        && elapsedSinceActive <= magnetismPersistMs;
+      const speed = currentSpeed >= MAGNETISM_MIN_SPEED ? currentSpeed : particle.magnetismLastSpeed;
+      if (speed < MAGNETISM_MIN_SPEED || (currentSpeed < MAGNETISM_MIN_SPEED && !hasPersistentTrace)) continue;
 
-      const directionX = particle.vx / speed;
-      const directionY = particle.vy / speed;
+      const baseVx = currentSpeed >= MAGNETISM_MIN_SPEED ? particle.vx : particle.magnetismLastVx;
+      const baseVy = currentSpeed >= MAGNETISM_MIN_SPEED ? particle.vy : particle.magnetismLastVy;
+      const traceFade = currentSpeed >= MAGNETISM_MIN_SPEED || magnetismPersistMs <= 0
+        ? 1
+        : Math.max(0, 1 - (elapsedSinceActive / magnetismPersistMs));
+      const particleMaxAlpha = strengthMaxAlpha * traceFade;
+      const clampedParticleMaxAlpha = Math.max(Number.EPSILON, particleMaxAlpha);
+
+      const directionX = baseVx / speed;
+      const directionY = baseVy / speed;
       const normalX = -directionY;
       const normalY = directionX;
       const outerRadius = particle.r
@@ -1891,7 +1937,7 @@
           for (let longitudinal = -forwardRange; longitudinal <= forwardRange; longitudinal += MAGNETISM_LONGITUDINAL_STEP) {
             const radialDistance = Math.hypot(sideDistance, longitudinal);
             const alpha = Math.min(
-              strengthMaxAlpha,
+              particleMaxAlpha,
               (strengthAlphaScale * speed) / (Math.max(1, sideDistance) * Math.max(1, radialDistance))
             );
             if (alpha < MAGNETISM_MIN_ALPHA) continue;
@@ -1909,14 +1955,14 @@
 
             const bucketIndex = Math.min(
               MAGNETISM_ALPHA_BUCKETS - 1,
-              Math.floor((alpha / clampedStrengthMaxAlpha) * MAGNETISM_ALPHA_BUCKETS)
+              Math.floor((alpha / clampedParticleMaxAlpha) * MAGNETISM_ALPHA_BUCKETS)
             );
             alphaBuckets[bucketIndex].push(centerX, centerY);
           }
           for (let bucketIndex = 0; bucketIndex < MAGNETISM_ALPHA_BUCKETS; bucketIndex++) {
             const segments = alphaBuckets[bucketIndex];
             if (segments.length === 0) continue;
-            ctx.globalAlpha = strengthMaxAlpha * ((bucketIndex + 0.5) / MAGNETISM_ALPHA_BUCKETS);
+            ctx.globalAlpha = particleMaxAlpha * ((bucketIndex + 0.5) / MAGNETISM_ALPHA_BUCKETS);
             ctx.lineWidth = lineWidth;
             ctx.beginPath();
             for (let index = 0; index < segments.length; index += 2) {
