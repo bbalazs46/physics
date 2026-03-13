@@ -393,6 +393,14 @@
   const PREDICTION_DOT_MIN_ALPHA = 0.18;
   const PREDICTION_DOT_ALPHA_RANGE = 0.68;
   const PREDICTION_DOT_COLOR_RGB = '255, 82, 82';
+  const FULL_TURN_RADIANS = Math.PI * 2;
+  const ORBIT_INDICATOR_COLOR_RGB = '255, 240, 170';
+  const ORBIT_INDICATOR_RADIUS_OFFSET = 12;
+  const ORBIT_INDICATOR_MIN_SWEEP_RADIANS = Math.PI / 10;
+  const ORBIT_INDICATOR_FADE_START_SWEEP_RADIANS = Math.PI;
+  const ORBIT_INDICATOR_FADE_END_SWEEP_RADIANS = Math.PI / 2;
+  const ORBIT_INDICATOR_TURN_SPACING = 10;
+  const ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS = Math.PI / 14;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -450,7 +458,7 @@
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
   let cachedWallChargeSamples = [];
-  let predictedCollisionPreview = { path: [], hits: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
+  let predictedCollisionPreview = { path: [], hits: [], orbitIndicators: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
   let collisionPredictionDirty = true;
   window.addEventListener('resize', markCollisionPredictionDirty);
   function syncControlInputsToState() {
@@ -545,6 +553,24 @@
     const clampedIndex = Math.max(0, Math.min(index, totalHits - 1));
     const fadeRatio = clampedIndex / (totalHits - 1);
     return PREDICTION_DOT_MIN_ALPHA + (1 - fadeRatio) * PREDICTION_DOT_ALPHA_RANGE;
+  }
+
+  function normalizeAngleDelta(angleDelta) {
+    let normalized = angleDelta;
+    while (normalized <= -Math.PI) normalized += FULL_TURN_RADIANS;
+    while (normalized > Math.PI) normalized -= FULL_TURN_RADIANS;
+    return normalized;
+  }
+
+  function interpolateSeriesValue(values, position) {
+    if (!values.length) return 0;
+    if (position <= 0) return values[0];
+    const upperBound = values.length - 1;
+    if (position >= upperBound) return values[upperBound];
+    const lowerIndex = Math.floor(position);
+    const upperIndex = Math.min(upperBound, lowerIndex + 1);
+    const mix = position - lowerIndex;
+    return values[lowerIndex] + (values[upperIndex] - values[lowerIndex]) * mix;
   }
 
   function buildWallChargeSamples() {
@@ -1307,6 +1333,40 @@
     return { wall: 'bottom', x: particle.x, y: canvas.height, stepIndex };
   }
 
+  function createOrbitPreviewTrackers(targetParticle, particleList) {
+    return particleList
+      .filter(particle => particle !== targetParticle)
+      .map(particle => ({
+        particleId: particle.id,
+        particle,
+        previousAngle: Math.atan2(targetParticle.y - particle.y, targetParticle.x - particle.x),
+        cumulativeAngles: [0]
+      }));
+  }
+
+  function recordOrbitPreviewStep(targetParticle, orbitTrackers) {
+    for (const tracker of orbitTrackers) {
+      const currentAngle = Math.atan2(targetParticle.y - tracker.particle.y, targetParticle.x - tracker.particle.x);
+      const angleDelta = normalizeAngleDelta(currentAngle - tracker.previousAngle);
+      const previousTotal = tracker.cumulativeAngles[tracker.cumulativeAngles.length - 1];
+      tracker.cumulativeAngles.push(previousTotal + angleDelta);
+      tracker.previousAngle = currentAngle;
+    }
+  }
+
+  function buildOrbitIndicators(orbitTrackers) {
+    return orbitTrackers
+      .map(tracker => {
+        const totalAngle = tracker.cumulativeAngles[tracker.cumulativeAngles.length - 1];
+        return {
+          particleId: tracker.particleId,
+          totalAngle,
+          cumulativeAngles: [...tracker.cumulativeAngles]
+        };
+      })
+      .filter(indicator => Math.abs(indicator.totalAngle) >= ORBIT_INDICATOR_MIN_SWEEP_RADIANS);
+  }
+
   function predictionTimeMsForStepIndex(stepIndex) {
     return Math.max(1, stepIndex) * PREDICTION_STEP_DURATION_MS;
   }
@@ -1384,13 +1444,13 @@
 
   function computeCollisionPredictionPreview() {
     if (collisionPredictionCount <= 0 || !selectedParticle || selectedParticle.pinned) {
-      return { path: [], hits: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
+      return { path: [], hits: [], orbitIndicators: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
     }
 
     const simulatedParticles = particles.map(cloneParticleState);
     const simulatedTarget = simulatedParticles.find(particle => particle.id === selectedParticle.id);
     if (!simulatedTarget) {
-      return { path: [], hits: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
+      return { path: [], hits: [], orbitIndicators: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
     }
 
     const previewState = {
@@ -1400,6 +1460,8 @@
       stepIndex: 0
     };
     const path = [{ x: simulatedTarget.x, y: simulatedTarget.y }];
+    const orbitTrackers = createOrbitPreviewTrackers(simulatedTarget, simulatedParticles);
+    let orbitIndicatorLimitReached = false;
     let simulatedTrackedEnergy = calculateTotalEnergyFor(simulatedParticles).total;
     const maxSteps = Math.max(MIN_PREDICTION_STEPS, collisionPredictionCount * MAX_PREDICTION_STEPS_PER_HIT);
 
@@ -1408,6 +1470,10 @@
       previewState.stepIndex = stepIndex + 1;
       const result = advanceParticleSystem(simulatedParticles, simulatedTrackedEnergy, null, previewState);
       simulatedTrackedEnergy = result.trackedEnergy;
+      if (!orbitIndicatorLimitReached) {
+        recordOrbitPreviewStep(simulatedTarget, orbitTrackers);
+        orbitIndicatorLimitReached = previewState.hits.length > 0;
+      }
       if (stepIndex % PREDICTION_PATH_SAMPLE_INTERVAL === 0 || previewState.hits.length > hitCountBeforeStep) {
         path.push({ x: simulatedTarget.x, y: simulatedTarget.y });
       }
@@ -1416,6 +1482,7 @@
     return {
       path,
       hits: previewState.hits,
+      orbitIndicators: previewState.hits.length > 0 ? buildOrbitIndicators(orbitTrackers) : [],
       createdAtMs: performance.now(),
       maxPredictionTimeMs: previewState.hits.reduce(
         (maxTimeMs, hit) => Math.max(maxTimeMs, predictionTimeMsForStepIndex(hit.stepIndex)),
@@ -2048,7 +2115,7 @@
 
   function drawCollisionPredictionPreview() {
     const preview = predictedCollisionPreview;
-    if (!preview || (preview.path.length === 0 && preview.hits.length === 0)) return;
+    if (!preview || (preview.path.length === 0 && preview.hits.length === 0 && (!preview.orbitIndicators || preview.orbitIndicators.length === 0))) return;
 
     if (collisionPredictionStyle === 'path-numbered' && preview.path.length > 1) {
       ctx.save();
@@ -2084,6 +2151,55 @@
         ctx.fillStyle = `rgba(${PREDICTION_DOT_COLOR_RGB}, ${alpha})`;
         ctx.fill();
       }
+      ctx.restore();
+    });
+
+    if (!selectedParticle || !preview.orbitIndicators || preview.orbitIndicators.length === 0) return;
+
+    const elapsedSteps = Math.max(0, (performance.now() - preview.createdAtMs) / PREDICTION_STEP_DURATION_MS);
+    const activeCollisionHit = preview.hits[0] || null;
+    if (!activeCollisionHit) return;
+    preview.orbitIndicators.forEach(indicator => {
+      const otherParticle = particles.find(particle => particle.id === indicator.particleId);
+      if (!otherParticle || otherParticle === selectedParticle) return;
+
+      const traversedAngle = interpolateSeriesValue(indicator.cumulativeAngles, elapsedSteps);
+      const remainingAngle = indicator.totalAngle - traversedAngle;
+      if (Math.abs(remainingAngle) < ORBIT_INDICATOR_MIN_SWEEP_RADIANS) return;
+
+      const collisionDirectionX = activeCollisionHit.x - otherParticle.x;
+      const collisionDirectionY = activeCollisionHit.y - otherParticle.y;
+      const collisionDirectionLength = Math.hypot(collisionDirectionX, collisionDirectionY);
+      if (collisionDirectionLength < 1e-6) return;
+
+      const collisionAngle = Math.atan2(collisionDirectionY, collisionDirectionX);
+      const baseRadius = otherParticle.r + ORBIT_INDICATOR_RADIUS_OFFSET;
+      const totalAngleMagnitude = Math.abs(remainingAngle);
+      const orbitIndicatorVisibility = Math.max(0, Math.min(1,
+        (totalAngleMagnitude - ORBIT_INDICATOR_FADE_END_SWEEP_RADIANS) /
+        (ORBIT_INDICATOR_FADE_START_SWEEP_RADIANS - ORBIT_INDICATOR_FADE_END_SWEEP_RADIANS)
+      ));
+      if (orbitIndicatorVisibility <= 0) return;
+      const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS));
+
+      ctx.save();
+      ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${0.9 * orbitIndicatorVisibility})`;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for (let segmentIndex = 0; segmentIndex <= segmentCount; segmentIndex++) {
+        const progress = segmentIndex / segmentCount;
+        const radiusDecayFactor = 1 - progress;
+        const angle = collisionAngle - remainingAngle * radiusDecayFactor;
+        const radius = baseRadius + (totalAngleMagnitude * radiusDecayFactor / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
+        const x = otherParticle.x + Math.cos(angle) * radius;
+        const y = otherParticle.y + Math.sin(angle) * radius;
+        if (segmentIndex === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.stroke();
       ctx.restore();
     });
   }
