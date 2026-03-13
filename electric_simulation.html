@@ -397,6 +397,8 @@
   const ORBIT_INDICATOR_COLOR_RGB = '255, 240, 170';
   const ORBIT_INDICATOR_RADIUS_OFFSET = 12;
   const ORBIT_INDICATOR_MIN_SWEEP_RADIANS = Math.PI / 10;
+  const ORBIT_INDICATOR_FADE_START_SWEEP_RADIANS = Math.PI;
+  const ORBIT_INDICATOR_FADE_END_SWEEP_RADIANS = Math.PI / 2;
   const ORBIT_INDICATOR_TURN_SPACING = 10;
   const ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS = Math.PI / 14;
   const MARCHING_SQUARE_CASES = {
@@ -2173,10 +2175,15 @@
       const collisionAngle = Math.atan2(collisionDirectionY, collisionDirectionX);
       const baseRadius = otherParticle.r + ORBIT_INDICATOR_RADIUS_OFFSET;
       const totalAngleMagnitude = Math.abs(remainingAngle);
+      const orbitIndicatorVisibility = Math.max(0, Math.min(1,
+        (totalAngleMagnitude - ORBIT_INDICATOR_FADE_END_SWEEP_RADIANS) /
+        (ORBIT_INDICATOR_FADE_START_SWEEP_RADIANS - ORBIT_INDICATOR_FADE_END_SWEEP_RADIANS)
+      ));
+      if (orbitIndicatorVisibility <= 0) return;
       const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS));
 
       ctx.save();
-      ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, 0.9)`;
+      ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${0.9 * orbitIndicatorVisibility})`;
       ctx.lineWidth = 2.2;
       ctx.beginPath();
       for (let segmentIndex = 0; segmentIndex <= segmentCount; segmentIndex++) {
