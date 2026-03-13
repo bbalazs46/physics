@@ -2182,7 +2182,7 @@
       for (let segmentIndex = 0; segmentIndex <= segmentCount; segmentIndex++) {
         const progress = segmentIndex / segmentCount;
         const radiusDecayFactor = 1 - progress;
-        const angle = collisionAngle + remainingAngle * progress;
+        const angle = collisionAngle - remainingAngle * radiusDecayFactor;
         const radius = baseRadius + (totalAngleMagnitude * radiusDecayFactor / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
         const x = otherParticle.x + Math.cos(angle) * radius;
         const y = otherParticle.y + Math.sin(angle) * radius;
