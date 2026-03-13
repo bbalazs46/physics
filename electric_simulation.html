@@ -396,9 +396,9 @@
   const FULL_TURN_RADIANS = Math.PI * 2;
   const ORBIT_INDICATOR_COLOR_RGB = '255, 240, 170';
   const ORBIT_INDICATOR_RADIUS_OFFSET = 12;
-  const ORBIT_INDICATOR_MIN_SWEEP = Math.PI / 10;
+  const ORBIT_INDICATOR_MIN_SWEEP_RADIANS = Math.PI / 10;
   const ORBIT_INDICATOR_TURN_SPACING = 10;
-  const ORBIT_INDICATOR_MAX_SEGMENT_ARC = Math.PI / 14;
+  const ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS = Math.PI / 14;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -1362,7 +1362,7 @@
           cumulativeAngles: tracker.cumulativeAngles
         };
       })
-      .filter(indicator => Math.abs(indicator.totalAngle) >= ORBIT_INDICATOR_MIN_SWEEP);
+      .filter(indicator => Math.abs(indicator.totalAngle) >= ORBIT_INDICATOR_MIN_SWEEP_RADIANS);
   }
 
   function predictionTimeMsForStepIndex(stepIndex) {
@@ -2161,14 +2161,14 @@
 
       const traversedAngle = interpolateSeriesValue(indicator.cumulativeAngles, elapsedSteps);
       const remainingAngle = indicator.totalAngle - traversedAngle;
-      if (Math.abs(remainingAngle) < ORBIT_INDICATOR_MIN_SWEEP) return;
+      if (Math.abs(remainingAngle) < ORBIT_INDICATOR_MIN_SWEEP_RADIANS) return;
 
       const currentAngle = Math.atan2(selectedParticle.y - otherParticle.y, selectedParticle.x - otherParticle.x);
       const baseRadius = otherParticle.r + ORBIT_INDICATOR_RADIUS_OFFSET;
       const alpha = Math.max(0.14, Math.min(0.9, Math.abs(remainingAngle / indicator.totalAngle)));
       const totalAngleMagnitude = Math.abs(remainingAngle);
       const spiralDirection = remainingAngle >= 0 ? 1 : -1;
-      const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC));
+      const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS));
       let previousPoint = null;
       let finalPoint = null;
       let finalDirectionX = 0;
