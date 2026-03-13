@@ -170,27 +170,6 @@
     </div>
 
     <div class="toggle-btn mt-8">
-      <input type="checkbox" id="magnetismShowInput" />
-      <label for="magnetismShowInput">Mágnesesség megjelenítése a mozgó részecskék körül</label>
-    </div>
-
-    <div class="slider-row mt-8">
-      <div class="slider-label">
-        <span>Mágneses effekt erőssége</span>
-        <span id="magnetismStrengthVal" aria-live="polite">100%</span>
-      </div>
-      <input type="range" id="magnetismStrengthInput" min="0" max="100" step="1" value="100" />
-    </div>
-
-    <div class="slider-row mt-8">
-      <div class="slider-label">
-        <span>Mágneses nyom láthatósága</span>
-        <span id="magnetismPersistMsVal" aria-live="polite">2 s</span>
-      </div>
-      <input type="range" id="magnetismPersistMsInput" min="0" max="5000" step="100" value="2000" />
-    </div>
-
-    <div class="toggle-btn mt-8">
       <input type="checkbox" id="perfectContourFillInput" />
       <label for="perfectContourFillInput">Tökéletes felbontású szintvonal-kitöltés</label>
     </div>
@@ -283,11 +262,6 @@
   const uniformContourStepInput = document.getElementById('uniformContourStepInput');
   const uniformContourStepVal = document.getElementById('uniformContourStepVal');
   const fillContourBandsInput = document.getElementById('fillContourBandsInput');
-  const magnetismShowInput = document.getElementById('magnetismShowInput');
-  const magnetismStrengthInput = document.getElementById('magnetismStrengthInput');
-  const magnetismStrengthVal = document.getElementById('magnetismStrengthVal');
-  const magnetismPersistMsInput = document.getElementById('magnetismPersistMsInput');
-  const magnetismPersistMsVal = document.getElementById('magnetismPersistMsVal');
   const perfectContourFillInput = document.getElementById('perfectContourFillInput');
   const collisionPredictionCountInput = document.getElementById('collisionPredictionCountInput');
   const collisionPredictionCountVal = document.getElementById('collisionPredictionCountVal');
@@ -336,9 +310,6 @@
   const DEFAULT_UNIFORM_CONTOUR_STEP = 2e4/(canvas.width+canvas.height);
   const DEFAULT_UNIFORM_CONTOURS_ENABLED = true;
   const DEFAULT_FILL_CONTOUR_BANDS = true;
-  const DEFAULT_MAGNETISM_SHOW = false;
-  const DEFAULT_MAGNETISM_STRENGTH = 1;
-  const DEFAULT_MAGNETISM_PERSIST_MS = 2000;
   const DEFAULT_PERFECT_CONTOUR_FILL = false;
   const MIN_CONTOUR_LEVEL_THRESHOLD = 0.01;
   const MIN_UNIFORM_CONTOUR_STEP = .1;
@@ -362,24 +333,6 @@
   const FIELD_FLOW_DASH = [3, 12];
   const FIELD_FLOW_SPEED = 0.11;
   const FIELD_FLOW_CYCLE = 15;
-  const MAGNETISM_MIN_SPEED = 0.08;
-  const MAGNETISM_SIDE_STEP = 7;
-  const MAGNETISM_LONGITUDINAL_STEP = 12;
-  const MAGNETISM_SEGMENT_LENGTH = 13;
-  const MAGNETISM_HALF_SEGMENT_LENGTH = MAGNETISM_SEGMENT_LENGTH * 0.5;
-  const MAGNETISM_SIDE_RADIUS_BONUS = 60;
-  const MAGNETISM_SPEED_RADIUS_SCALE = 8;
-  const MAGNETISM_SPEED_RADIUS_CAP_FACTOR = 0.15;
-  const MAGNETISM_FORWARD_RANGE_FACTOR = 1.8;
-  const MAGNETISM_MAX_FORWARD_RANGE = 180;
-  const MAGNETISM_ALPHA_SCALE = 24;
-  const MAGNETISM_MAX_ALPHA = 0.16;
-  const MAGNETISM_MIN_ALPHA = 0.003;
-  const MAGNETISM_ALPHA_BUCKETS = 6;
-  const MAGNETISM_INNER_RADIUS_FACTOR = 0.75;
-  const MAGNETISM_MIN_LINE_WIDTH = 2;
-  const MAGNETISM_LINE_WIDTH_SCALE = 0.06;
-  const MAGNETISM_LINE_WIDTH_BASE = 1.8;
   // The physics loop advances in fixed-duration simulation steps based on elapsed time.
   const SIMULATION_STEPS_PER_SECOND = 120;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 0;
@@ -448,9 +401,6 @@
   let uniformContoursEnabled = DEFAULT_UNIFORM_CONTOURS_ENABLED;
   let uniformContourStep = DEFAULT_UNIFORM_CONTOUR_STEP;
   let fillContourBands = DEFAULT_FILL_CONTOUR_BANDS;
-  let magnetismShowEnabled = DEFAULT_MAGNETISM_SHOW;
-  let magnetismStrength = DEFAULT_MAGNETISM_STRENGTH;
-  let magnetismPersistMs = DEFAULT_MAGNETISM_PERSIST_MS;
   let perfectContourFillEnabled = DEFAULT_PERFECT_CONTOUR_FILL;
   let collisionPredictionCount = DEFAULT_COLLISION_PREDICTION_COUNT;
   let collisionPredictionStyle = DEFAULT_COLLISION_PREDICTION_STYLE;
@@ -480,9 +430,6 @@
     uniformContoursInput.checked = uniformContoursEnabled;
     uniformContourStepInput.value = String(uniformContourStep);
     fillContourBandsInput.checked = fillContourBands;
-    magnetismShowInput.checked = magnetismShowEnabled;
-    magnetismStrengthInput.value = String(Math.round(magnetismStrength * 100));
-    magnetismPersistMsInput.value = String(magnetismPersistMs);
     perfectContourFillInput.checked = perfectContourFillEnabled;
     collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
     collisionPredictionCountInput.value = String(collisionPredictionCount);
@@ -503,10 +450,6 @@
 
   function getPotentialColorScheme() {
     return POTENTIAL_COLOR_SCHEMES[colorScheme] || POTENTIAL_COLOR_SCHEMES.forest;
-  }
-
-  function getMagnetismPalette() {
-    return colorScheme === 'forest' ? PALETTES.classic : PALETTES.forest;
   }
 
   function getAverageScreenPotential() {
@@ -695,11 +638,7 @@
       charge,
       pinned: false,
       r: radiusForMass(mass),
-      trail: [],
-      magnetismLastActiveTime: performance.now(),
-      magnetismLastVx: vx,
-      magnetismLastVy: vy,
-      magnetismLastSpeed: Math.hypot(vx, vy)
+      trail: []
     };
     return particle;
   }
@@ -717,8 +656,6 @@
     fieldLineFrequencyVal.textContent = Math.round(fieldLineFrequency);
     contourLineFrequencyVal.textContent = Math.round(contourLineFrequency);
     uniformContourStepVal.textContent = formatSliderValue(uniformContourStep);
-    magnetismStrengthVal.textContent = `${Math.round(magnetismStrength * 100)}%`;
-    magnetismPersistMsVal.textContent = magnetismPersistMs <= 0 ? '0 s' : `${formatSliderValue(magnetismPersistMs / 1000)} s`;
     collisionPredictionCountVal.textContent = Math.round(collisionPredictionCount);
   }
 
@@ -1046,20 +983,6 @@
   fillContourBandsInput.addEventListener('change', () => {
     fillContourBands = fillContourBandsInput.checked;
     updateContourControlState();
-  });
-
-  magnetismShowInput.addEventListener('change', () => {
-    magnetismShowEnabled = magnetismShowInput.checked;
-  });
-
-  magnetismStrengthInput.addEventListener('input', () => {
-    magnetismStrength = parseInt(magnetismStrengthInput.value, 10) / 100;
-    updateEditorValues();
-  });
-
-  magnetismPersistMsInput.addEventListener('input', () => {
-    magnetismPersistMs = parseInt(magnetismPersistMsInput.value, 10);
-    updateEditorValues();
   });
 
   perfectContourFillInput.addEventListener('change', () => {
@@ -1499,16 +1422,6 @@
 
     const result = advanceParticleSystem(particles, trackedTotalEnergy, dragged);
     trackedTotalEnergy = result.trackedEnergy;
-    const now = performance.now();
-    for (const particle of particles) {
-      const speed = Math.hypot(particle.vx, particle.vy);
-      if (speed >= MAGNETISM_MIN_SPEED) {
-        particle.magnetismLastActiveTime = now;
-        particle.magnetismLastVx = particle.vx;
-        particle.magnetismLastVy = particle.vy;
-        particle.magnetismLastSpeed = speed;
-      }
-    }
     if (result.collisionOccurred) {
       markCollisionPredictionDirty();
     }
@@ -1943,117 +1856,6 @@
     }
   }
 
-  function drawMagnetism() {
-    if (!magnetismShowEnabled || magnetismStrength <= 0) return;
-    const palette = getMagnetismPalette();
-    const strengthAlphaScale = MAGNETISM_ALPHA_SCALE * magnetismStrength;
-    const strengthMaxAlpha = MAGNETISM_MAX_ALPHA * magnetismStrength;
-    const strengthShadowBlur = 10 * Math.max(0.35, magnetismStrength);
-    const now = performance.now();
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    for (const particle of particles) {
-      const currentSpeed = Math.hypot(particle.vx, particle.vy);
-      const elapsedSinceActive = now - particle.magnetismLastActiveTime;
-      const hasPersistentTrace = magnetismPersistMs > 0
-        && elapsedSinceActive <= magnetismPersistMs;
-      const isCurrentlyMagnetic = currentSpeed >= MAGNETISM_MIN_SPEED;
-      const speed = isCurrentlyMagnetic ? currentSpeed : particle.magnetismLastSpeed;
-      if (speed < MAGNETISM_MIN_SPEED || (!isCurrentlyMagnetic && !hasPersistentTrace)) continue;
-
-      const baseVx = isCurrentlyMagnetic ? particle.vx : particle.magnetismLastVx;
-      const baseVy = isCurrentlyMagnetic ? particle.vy : particle.magnetismLastVy;
-      let traceFade = 1;
-      if (!isCurrentlyMagnetic && magnetismPersistMs > 0) {
-        traceFade = Math.max(0, 1 - (elapsedSinceActive / magnetismPersistMs));
-      }
-      const particleMaxAlpha = strengthMaxAlpha * traceFade;
-      const clampedParticleMaxAlpha = Math.max(Number.EPSILON, particleMaxAlpha);
-
-      const directionX = baseVx / speed;
-      const directionY = baseVy / speed;
-      const normalX = -directionY;
-      const normalY = directionX;
-      const outerRadius = particle.r
-        + MAGNETISM_SIDE_RADIUS_BONUS
-        + Math.min(MAGNETISM_MAX_FORWARD_RANGE * MAGNETISM_SPEED_RADIUS_CAP_FACTOR, speed * MAGNETISM_SPEED_RADIUS_SCALE);
-      const forwardRange = Math.min(MAGNETISM_MAX_FORWARD_RANGE, outerRadius * MAGNETISM_FORWARD_RANGE_FACTOR);
-      const maxExtent = forwardRange + outerRadius;
-      if (
-        particle.x < -maxExtent
-        || particle.y < -maxExtent
-        || particle.x > canvas.width + maxExtent
-        || particle.y > canvas.height + maxExtent
-      ) {
-        continue;
-      }
-      const leftColor = particle.charge >= 0 ? palette.positive : palette.negative;
-      const rightColor = particle.charge >= 0 ? palette.negative : palette.positive;
-
-      for (const [sideSign, color] of [[-1, leftColor], [1, rightColor]]) {
-        ctx.strokeStyle = color;
-        ctx.shadowColor = color;
-        ctx.shadowBlur = strengthShadowBlur;
-
-        for (let sideDistance = particle.r * MAGNETISM_INNER_RADIUS_FACTOR; sideDistance <= outerRadius; sideDistance += MAGNETISM_SIDE_STEP) {
-          const lineWidth = Math.max(MAGNETISM_MIN_LINE_WIDTH, (outerRadius - sideDistance) * MAGNETISM_LINE_WIDTH_SCALE + MAGNETISM_LINE_WIDTH_BASE);
-          const alphaBuckets = Array.from({ length: MAGNETISM_ALPHA_BUCKETS }, () => []);
-          for (let longitudinal = -forwardRange; longitudinal <= forwardRange; longitudinal += MAGNETISM_LONGITUDINAL_STEP) {
-            const radialDistance = Math.hypot(sideDistance, longitudinal);
-            const alpha = Math.min(
-              particleMaxAlpha,
-              (strengthAlphaScale * speed) / (Math.max(1, sideDistance) * Math.max(1, radialDistance))
-            );
-            if (alpha < MAGNETISM_MIN_ALPHA) continue;
-
-            const centerX = particle.x + normalX * sideSign * sideDistance + directionX * longitudinal;
-            const centerY = particle.y + normalY * sideSign * sideDistance + directionY * longitudinal;
-            if (
-              centerX < -MAGNETISM_SEGMENT_LENGTH
-              || centerY < -MAGNETISM_SEGMENT_LENGTH
-              || centerX > canvas.width + MAGNETISM_SEGMENT_LENGTH
-              || centerY > canvas.height + MAGNETISM_SEGMENT_LENGTH
-            ) {
-              continue;
-            }
-
-            const bucketIndex = Math.min(
-              MAGNETISM_ALPHA_BUCKETS - 1,
-              Math.floor((alpha / clampedParticleMaxAlpha) * MAGNETISM_ALPHA_BUCKETS)
-            );
-            alphaBuckets[bucketIndex].push(centerX, centerY);
-          }
-          for (let bucketIndex = 0; bucketIndex < MAGNETISM_ALPHA_BUCKETS; bucketIndex++) {
-            const segments = alphaBuckets[bucketIndex];
-            if (segments.length === 0) continue;
-            ctx.globalAlpha = particleMaxAlpha * ((bucketIndex + 0.5) / MAGNETISM_ALPHA_BUCKETS);
-            ctx.lineWidth = lineWidth;
-            ctx.beginPath();
-            for (let index = 0; index < segments.length; index += 2) {
-              const segmentCenterX = segments[index];
-              const segmentCenterY = segments[index + 1];
-              ctx.moveTo(
-                segmentCenterX - directionX * MAGNETISM_HALF_SEGMENT_LENGTH,
-                segmentCenterY - directionY * MAGNETISM_HALF_SEGMENT_LENGTH
-              );
-              ctx.lineTo(
-                segmentCenterX + directionX * MAGNETISM_HALF_SEGMENT_LENGTH,
-                segmentCenterY + directionY * MAGNETISM_HALF_SEGMENT_LENGTH
-              );
-            }
-            ctx.stroke();
-          }
-        }
-      }
-    }
-
-    ctx.restore();
-  }
-
   function drawParticles() {
     for (const particle of particles) {
       const color = particleColor(particle);
@@ -2207,7 +2009,6 @@
   function draw() {
     maybeRefreshCollisionPrediction();
     drawBackground();
-    drawMagnetism();
     drawTrails();
     drawCollisionPredictionPreview();
     drawParticles();
