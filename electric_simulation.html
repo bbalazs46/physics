@@ -1893,16 +1893,17 @@
       const currentSpeed = Math.hypot(particle.vx, particle.vy);
       const elapsedSinceActive = now - particle.magnetismLastActiveTime;
       const hasPersistentTrace = magnetismPersistMs > 0
-        && Number.isFinite(particle.magnetismLastActiveTime)
         && elapsedSinceActive <= magnetismPersistMs;
-      const speed = currentSpeed >= MAGNETISM_MIN_SPEED ? currentSpeed : particle.magnetismLastSpeed;
-      if (speed < MAGNETISM_MIN_SPEED || (currentSpeed < MAGNETISM_MIN_SPEED && !hasPersistentTrace)) continue;
+      const isCurrentlyMagnetic = currentSpeed >= MAGNETISM_MIN_SPEED;
+      const speed = isCurrentlyMagnetic ? currentSpeed : particle.magnetismLastSpeed;
+      if (speed < MAGNETISM_MIN_SPEED || (!isCurrentlyMagnetic && !hasPersistentTrace)) continue;
 
-      const baseVx = currentSpeed >= MAGNETISM_MIN_SPEED ? particle.vx : particle.magnetismLastVx;
-      const baseVy = currentSpeed >= MAGNETISM_MIN_SPEED ? particle.vy : particle.magnetismLastVy;
-      const traceFade = currentSpeed >= MAGNETISM_MIN_SPEED || magnetismPersistMs <= 0
-        ? 1
-        : Math.max(0, 1 - (elapsedSinceActive / magnetismPersistMs));
+      const baseVx = isCurrentlyMagnetic ? particle.vx : particle.magnetismLastVx;
+      const baseVy = isCurrentlyMagnetic ? particle.vy : particle.magnetismLastVy;
+      let traceFade = 1;
+      if (!isCurrentlyMagnetic && magnetismPersistMs > 0) {
+        traceFade = Math.max(0, 1 - (elapsedSinceActive / magnetismPersistMs));
+      }
       const particleMaxAlpha = strengthMaxAlpha * traceFade;
       const clampedParticleMaxAlpha = Math.max(Number.EPSILON, particleMaxAlpha);
 
