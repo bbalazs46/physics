@@ -1975,6 +1975,13 @@
       if (collisionDirectionLength < 1e-6) return;
 
       const collisionAngle = Math.atan2(collisionDirectionY, collisionDirectionX);
+      const currentDirectionX = selectedParticle.x - otherParticle.x;
+      const currentDirectionY = selectedParticle.y - otherParticle.y;
+      const currentDistance = Math.hypot(currentDirectionX, currentDirectionY);
+      if (currentDistance < 1e-6) return;
+      const currentAngle = Math.atan2(currentDirectionY, currentDirectionX);
+      const predictedStartAngle = collisionAngle - remainingAngle;
+      const angleOffset = normalizeAngleDelta(currentAngle - predictedStartAngle);
       const baseRadius = otherParticle.r + ORBIT_INDICATOR_RADIUS_OFFSET;
       const totalAngleMagnitude = Math.abs(remainingAngle);
       const orbitIndicatorVisibility = Math.max(0, Math.min(1,
@@ -1983,6 +1990,8 @@
       ));
       if (orbitIndicatorVisibility <= 0) return;
       const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS));
+      const predictedStartRadius = baseRadius + (totalAngleMagnitude / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
+      const radiusOffset = currentDistance - predictedStartRadius;
 
       ctx.save();
       ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${0.9 * orbitIndicatorVisibility})`;
@@ -1991,8 +2000,10 @@
       for (let segmentIndex = 0; segmentIndex <= segmentCount; segmentIndex++) {
         const progress = segmentIndex / segmentCount;
         const radiusDecayFactor = 1 - progress;
-        const angle = collisionAngle - remainingAngle * radiusDecayFactor;
-        const radius = baseRadius + (totalAngleMagnitude * radiusDecayFactor / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
+        const angle = collisionAngle - remainingAngle * radiusDecayFactor + angleOffset * radiusDecayFactor;
+        const radius = baseRadius
+          + (totalAngleMagnitude * radiusDecayFactor / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING
+          + radiusOffset * radiusDecayFactor;
         const x = otherParticle.x + Math.cos(angle) * radius;
         const y = otherParticle.y + Math.sin(angle) * radius;
         if (segmentIndex === 0) {
