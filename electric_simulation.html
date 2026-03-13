@@ -396,8 +396,9 @@
   const FULL_TURN_RADIANS = Math.PI * 2;
   const ORBIT_INDICATOR_COLOR_RGB = '255, 240, 170';
   const ORBIT_INDICATOR_RADIUS_OFFSET = 12;
-  const ORBIT_INDICATOR_TEXT_OFFSET = 19;
   const ORBIT_INDICATOR_MIN_SWEEP = Math.PI / 10;
+  const ORBIT_INDICATOR_TURN_SPACING = 10;
+  const ORBIT_INDICATOR_MAX_SEGMENT_ARC = Math.PI / 14;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -557,11 +558,6 @@
     while (normalized <= -Math.PI) normalized += FULL_TURN_RADIANS;
     while (normalized > Math.PI) normalized -= FULL_TURN_RADIANS;
     return normalized;
-  }
-
-  function formatOrbitTurnCount(turns) {
-    const rounded = Math.round(turns * 10) / 10;
-    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
   }
 
   function interpolateSeriesValue(values, position) {
@@ -2168,43 +2164,58 @@
       if (Math.abs(remainingAngle) < ORBIT_INDICATOR_MIN_SWEEP) return;
 
       const currentAngle = Math.atan2(selectedParticle.y - otherParticle.y, selectedParticle.x - otherParticle.x);
-      const orbitRadius = otherParticle.r + ORBIT_INDICATOR_RADIUS_OFFSET;
-      const endAngle = currentAngle + remainingAngle;
+      const baseRadius = otherParticle.r + ORBIT_INDICATOR_RADIUS_OFFSET;
       const alpha = Math.max(0.14, Math.min(0.9, Math.abs(remainingAngle / indicator.totalAngle)));
-      const endX = otherParticle.x + Math.cos(endAngle) * orbitRadius;
-      const endY = otherParticle.y + Math.sin(endAngle) * orbitRadius;
-      const tangentX = remainingAngle >= 0 ? -Math.sin(endAngle) : Math.sin(endAngle);
-      const tangentY = remainingAngle >= 0 ? Math.cos(endAngle) : -Math.cos(endAngle);
-      const normalX = Math.cos(endAngle);
-      const normalY = Math.sin(endAngle);
+      const totalAngleMagnitude = Math.abs(remainingAngle);
+      const spiralDirection = remainingAngle >= 0 ? 1 : -1;
+      const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC));
+      let previousPoint = null;
+      let finalPoint = null;
+      let finalDirectionX = 0;
+      let finalDirectionY = 0;
       const arrowSize = 8;
-      const labelAngle = currentAngle + remainingAngle * 0.5;
-      const labelRadius = orbitRadius + ORBIT_INDICATOR_TEXT_OFFSET;
-      const remainingTurnCount = Math.abs(remainingAngle) / FULL_TURN_RADIANS;
 
       ctx.save();
       ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${alpha})`;
       ctx.fillStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${Math.min(1, alpha + 0.08)})`;
       ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.arc(otherParticle.x, otherParticle.y, orbitRadius, currentAngle, endAngle, remainingAngle < 0);
+      for (let segmentIndex = 0; segmentIndex <= segmentCount; segmentIndex++) {
+        const progress = segmentIndex / segmentCount;
+        const angleOffset = remainingAngle * progress;
+        const angle = currentAngle + angleOffset;
+        const radius = baseRadius + (totalAngleMagnitude * progress / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
+        const x = otherParticle.x + Math.cos(angle) * radius;
+        const y = otherParticle.y + Math.sin(angle) * radius;
+        if (segmentIndex === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+        previousPoint = finalPoint;
+        finalPoint = { x, y };
+      }
       ctx.stroke();
 
+      if (!finalPoint || !previousPoint) {
+        ctx.restore();
+        return;
+      }
+
+      finalDirectionX = finalPoint.x - previousPoint.x;
+      finalDirectionY = finalPoint.y - previousPoint.y;
+      const finalDirectionLength = Math.hypot(finalDirectionX, finalDirectionY) || 1;
+      const tangentX = finalDirectionX / finalDirectionLength;
+      const tangentY = finalDirectionY / finalDirectionLength;
+      const normalX = spiralDirection >= 0 ? -tangentY : tangentY;
+      const normalY = spiralDirection >= 0 ? tangentX : -tangentX;
+
       ctx.beginPath();
-      ctx.moveTo(endX, endY);
-      ctx.lineTo(endX - tangentX * arrowSize - normalX * (arrowSize * 0.45), endY - tangentY * arrowSize - normalY * (arrowSize * 0.45));
-      ctx.lineTo(endX - tangentX * arrowSize + normalX * (arrowSize * 0.45), endY - tangentY * arrowSize + normalY * (arrowSize * 0.45));
+      ctx.moveTo(finalPoint.x, finalPoint.y);
+      ctx.lineTo(finalPoint.x - tangentX * arrowSize - normalX * (arrowSize * 0.45), finalPoint.y - tangentY * arrowSize - normalY * (arrowSize * 0.45));
+      ctx.lineTo(finalPoint.x - tangentX * arrowSize + normalX * (arrowSize * 0.45), finalPoint.y - tangentY * arrowSize + normalY * (arrowSize * 0.45));
       ctx.closePath();
       ctx.fill();
-
-      ctx.font = 'bold 11px "Segoe UI"';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(
-        `${formatOrbitTurnCount(remainingTurnCount)}×`,
-        otherParticle.x + Math.cos(labelAngle) * labelRadius,
-        otherParticle.y + Math.sin(labelAngle) * labelRadius
-      );
       ctx.restore();
     });
   }
