@@ -397,6 +397,8 @@
   const ORBIT_INDICATOR_COLOR_RGB = '255, 240, 170';
   const ORBIT_INDICATOR_RADIUS_OFFSET = 12;
   const ORBIT_INDICATOR_MIN_SWEEP_RADIANS = Math.PI / 10;
+  const ORBIT_INDICATOR_ARROW_FADE_END_RADIANS = Math.PI / 2;
+  const ORBIT_INDICATOR_ARROW_ALPHA_BOOST = 0.08;
   const ORBIT_INDICATOR_TURN_SPACING = 10;
   const ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS = Math.PI / 14;
   const MARCHING_SQUARE_CASES = {
@@ -1359,7 +1361,7 @@
         return {
           particleId: tracker.particleId,
           totalAngle,
-          cumulativeAngles: tracker.cumulativeAngles
+          cumulativeAngles: [...tracker.cumulativeAngles]
         };
       })
       .filter(indicator => Math.abs(indicator.totalAngle) >= ORBIT_INDICATOR_MIN_SWEEP_RADIANS);
@@ -2167,6 +2169,7 @@
       const baseRadius = otherParticle.r + ORBIT_INDICATOR_RADIUS_OFFSET;
       const alpha = Math.max(0.14, Math.min(0.9, Math.abs(remainingAngle / indicator.totalAngle)));
       const totalAngleMagnitude = Math.abs(remainingAngle);
+      const arrowAlpha = alpha * Math.max(0, Math.min(1, totalAngleMagnitude / ORBIT_INDICATOR_ARROW_FADE_END_RADIANS));
       const spiralDirection = remainingAngle >= 0 ? 1 : -1;
       const segmentCount = Math.max(16, Math.ceil(totalAngleMagnitude / ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS));
       let previousPoint = null;
@@ -2177,7 +2180,6 @@
 
       ctx.save();
       ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${alpha})`;
-      ctx.fillStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${Math.min(1, alpha + 0.08)})`;
       ctx.lineWidth = 2.2;
       ctx.beginPath();
       for (let segmentIndex = 0; segmentIndex <= segmentCount; segmentIndex++) {
@@ -2209,7 +2211,12 @@
       const tangentY = finalDirectionY / finalDirectionLength;
       const normalX = spiralDirection >= 0 ? -tangentY : tangentY;
       const normalY = spiralDirection >= 0 ? tangentX : -tangentX;
+      if (arrowAlpha <= 0) {
+        ctx.restore();
+        return;
+      }
 
+      ctx.fillStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${Math.min(1, arrowAlpha + ORBIT_INDICATOR_ARROW_ALPHA_BOOST)})`;
       ctx.beginPath();
       ctx.moveTo(finalPoint.x, finalPoint.y);
       ctx.lineTo(finalPoint.x - tangentX * arrowSize - normalX * (arrowSize * 0.45), finalPoint.y - tangentY * arrowSize - normalY * (arrowSize * 0.45));
