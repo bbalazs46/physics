@@ -178,7 +178,7 @@
   </div>
 
   <div class="section">
-    <h3>Szimuláció</h3>
+    <h3>Pálya előrejelzés</h3>
     <div class="slider-row">
       <div class="slider-label">
         <span>Előre jelzett falütközések száma</span>
@@ -191,8 +191,8 @@
         <span>Előrejelzés stílusa</span>
       </div>
       <select id="collisionPredictionStyle">
-        <option value="fading-dots" selected>Halványuló piros pontok</option>
-        <option value="path-numbered">Útvonal és számozott ütközések</option>
+        <option value="path-numbered" selected>Útvonal és számozott ütközések</option>
+        <option value="fading-dots">Halványuló piros pontok</option>
       </select>
     </div>
     <div class="button-row">
@@ -336,7 +336,7 @@
   // The physics loop advances in fixed-duration simulation steps based on elapsed time.
   const SIMULATION_STEPS_PER_SECOND = 120;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 0;
-  const DEFAULT_COLLISION_PREDICTION_STYLE = 'fading-dots';
+  const DEFAULT_COLLISION_PREDICTION_STYLE = 'path-numbered';
   const MAX_COLLISION_PREDICTION_COUNT = 12;
   const MIN_PREDICTION_STEPS = 240;
   const MAX_PREDICTION_STEPS_PER_HIT = 1800;
