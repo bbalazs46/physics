@@ -1241,7 +1241,6 @@
   canvas.addEventListener('touchend', onPointerUp);
 
   function potentialAt(x, y) {
-    console.log("calc_potential");
     let potential = 0;
     for (const particle of particles) {
       const dx = x - particle.x;
@@ -1267,7 +1266,6 @@
       const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
       const dist = Math.sqrt(distSq);
       const scale = positiveTestFieldScale(particle.charge, distSq, dist);
-      //console.log(dist);
       fieldX += deltaX * scale;
       fieldY += deltaY * scale;
     }
