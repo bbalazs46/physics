@@ -416,8 +416,9 @@
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
   let cachedWallChargeSamples = [];
-  let predictedCollisionPreview = { path: [], hits: [], orbitIndicators: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
+  let predictedCollisionPreview = { path: [], hits: [], orbitIndicators: [], replayBuffer: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
   let collisionPredictionDirty = true;
+  let replayBufferIndex = 0;
   window.addEventListener('resize', markCollisionPredictionDirty);
   function syncControlInputsToState() {
     massInput.value = String(nextParticleMass);
@@ -769,6 +770,7 @@
   function maybeRefreshCollisionPrediction() {
     if (!collisionPredictionDirty || dragged) return;
     predictedCollisionPreview = computeCollisionPredictionPreview();
+    replayBufferIndex = 0;
     collisionPredictionDirty = false;
   }
 
@@ -1380,13 +1382,13 @@
 
   function computeCollisionPredictionPreview() {
     if (collisionPredictionCount <= 0 || !selectedParticle || selectedParticle.pinned) {
-      return { path: [], hits: [], orbitIndicators: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
+      return { path: [], hits: [], orbitIndicators: [], replayBuffer: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
     }
 
     const simulatedParticles = particles.map(cloneParticleState);
     const simulatedTarget = simulatedParticles.find(particle => particle.id === selectedParticle.id);
     if (!simulatedTarget) {
-      return { path: [], hits: [], orbitIndicators: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
+      return { path: [], hits: [], orbitIndicators: [], replayBuffer: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
     }
 
     const previewState = {
@@ -1396,6 +1398,7 @@
       stepIndex: 0
     };
     const path = [{ x: simulatedTarget.x, y: simulatedTarget.y }];
+    const replayBuffer = [];
     const orbitTrackers = createOrbitPreviewTrackers(simulatedTarget, simulatedParticles);
     let orbitIndicatorLimitReached = false;
     let simulatedTrackedEnergy = calculateTotalEnergyFor(simulatedParticles).total;
@@ -1413,12 +1416,20 @@
       if (stepIndex % PREDICTION_PATH_SAMPLE_INTERVAL === 0 || previewState.hits.length > hitCountBeforeStep) {
         path.push({ x: simulatedTarget.x, y: simulatedTarget.y });
       }
+      const snapshot = {};
+      for (const p of simulatedParticles) {
+        if (!p.pinned) {
+          snapshot[p.id] = { x: p.x, y: p.y, vx: p.vx, vy: p.vy };
+        }
+      }
+      replayBuffer.push(snapshot);
     }
 
     return {
       path,
       hits: previewState.hits,
       orbitIndicators: previewState.hits.length > 0 ? buildOrbitIndicators(orbitTrackers) : [],
+      replayBuffer,
       createdAtMs: performance.now(),
       maxPredictionTimeMs: previewState.hits.reduce(
         (maxTimeMs, hit) => Math.max(maxTimeMs, predictionTimeMsForStepIndex(hit.stepIndex)),
@@ -1429,6 +1440,27 @@
 
   function step() {
     if (paused) return;
+
+    const buf = predictedCollisionPreview.replayBuffer;
+    if (!collisionPredictionDirty && !dragged && buf && replayBufferIndex < buf.length) {
+      const snapshot = buf[replayBufferIndex++];
+      for (const particle of particles) {
+        if (particle.pinned) continue;
+        const state = snapshot[particle.id];
+        if (!state) continue;
+        particle.x = state.x;
+        particle.y = state.y;
+        particle.vx = state.vx;
+        particle.vy = state.vy;
+        recordParticleTrail(particle);
+      }
+      if (replayBufferIndex >= buf.length) {
+        markCollisionPredictionDirty();
+        trackedTotalEnergy = null;
+      }
+      return;
+    }
+
     if (trackedTotalEnergy === null) {
       resetTrackedTotalEnergy();
     }
