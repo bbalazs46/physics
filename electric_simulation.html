@@ -768,7 +768,7 @@
   }
 
   function maybeRefreshCollisionPrediction() {
-    if (!collisionPredictionDirty || dragged) return;
+    if (!collisionPredictionDirty) return;
     predictedCollisionPreview = computeCollisionPredictionPreview();
     replayBufferIndex = 0;
     collisionPredictionDirty = false;
@@ -893,6 +893,7 @@
     nextParticleMass = parseFloat(massInput.value);
     updateEditorValues();
     applyEditorToSelectedParticle();
+    markCollisionPredictionDirty();
   });
   massInput.addEventListener('change', markCollisionPredictionDirty);
 
@@ -900,6 +901,7 @@
     nextParticleCharge = parseFloat(chargeInput.value);
     updateEditorValues();
     applyEditorToSelectedParticle();
+    markCollisionPredictionDirty();
   });
   chargeInput.addEventListener('change', markCollisionPredictionDirty);
 
@@ -926,12 +928,14 @@
     fieldStrength = parseFloat(forceInput.value);
     updateEditorValues();
     resetTrackedTotalEnergy();
+    markCollisionPredictionDirty();
   });
   forceInput.addEventListener('change', markCollisionPredictionDirty);
 
   dampingInput.addEventListener('input', () => {
     damping = parseFloat(dampingInput.value);
     updateEditorValues();
+    markCollisionPredictionDirty();
   });
   dampingInput.addEventListener('change', markCollisionPredictionDirty);
 
@@ -957,6 +961,7 @@
     wallChargeMagnitude = parseFloat(wallChargeMagnitudeInput.value);
     updateEditorValues();
     resetTrackedTotalEnergy();
+    markCollisionPredictionDirty();
   });
   wallChargeMagnitudeInput.addEventListener('change', markCollisionPredictionDirty);
 
@@ -1002,6 +1007,7 @@
   collisionPredictionCountInput.addEventListener('input', () => {
     collisionPredictionCount = parseInt(collisionPredictionCountInput.value, 10);
     updateEditorValues();
+    markCollisionPredictionDirty();
   });
   collisionPredictionCountInput.addEventListener('change', markCollisionPredictionDirty);
   collisionPredictionStyleInput.addEventListener('change', () => {
