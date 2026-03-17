@@ -1460,7 +1460,8 @@
         particle.vy = state.vy;
         recordParticleTrail(particle);
       }
-      if (replayBufferIndex >= buf.length) {
+      const hitAtThisStep = predictedCollisionPreview.hits.some(h => h.stepIndex === replayBufferIndex);
+      if (hitAtThisStep || replayBufferIndex >= buf.length) {
         markCollisionPredictionDirty();
         trackedTotalEnergy = null;
         maybeRefreshCollisionPrediction();
