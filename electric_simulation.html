@@ -282,7 +282,7 @@
     classic: { positive: '#ff5252', negative: '#0b3d91', neutral: '#b0bec5' }
   };
   const EPSILON = 600;
-  const EPSILON_FOR_MOVE = 1;
+  const EPSILON_FOR_MOVE = 0.1;
   const MAX_FORCE = 350;
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
@@ -346,7 +346,7 @@
   // Keep the reference rate at the tuned physics cadence so changing the
   // simulation step rate does not change the apparent motion speed.
   const PHYSICS_REFERENCE_STEPS_PER_SECOND = 120;
-  const SIMULATION_STEPS_PER_SECOND = 1200;
+  const SIMULATION_STEPS_PER_SECOND = 12000;
   const PHYSICS_STEP_SCALE = PHYSICS_REFERENCE_STEPS_PER_SECOND / SIMULATION_STEPS_PER_SECOND;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 0;
   const DEFAULT_COLLISION_PREDICTION_STYLE = 'path-numbered';
