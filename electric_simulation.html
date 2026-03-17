@@ -367,6 +367,8 @@
   const ORBIT_INDICATOR_FADE_END_SWEEP_RADIANS = Math.PI / 2;
   const ORBIT_INDICATOR_TURN_SPACING = 10;
   const ORBIT_INDICATOR_MAX_SEGMENT_ARC_RADIANS = Math.PI / 14;
+  const ORBIT_INDICATOR_ARROW_LENGTH = 11;
+  const ORBIT_INDICATOR_ARROW_SPREAD_RADIANS = Math.PI / 5;
   const MARCHING_SQUARE_CASES = {
     1: [['left', 'bottom']],
     2: [['bottom', 'right']],
@@ -2079,6 +2081,8 @@
       ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${0.9 * orbitIndicatorVisibility})`;
       ctx.lineWidth = 2.2;
       ctx.beginPath();
+      let previousPoint = null;
+      let lastPoint = null;
       for (let segmentIndex = 0; segmentIndex <= segmentCount; segmentIndex++) {
         const progress = segmentIndex / segmentCount;
         const radiusDecayFactor = 1 - progress;
@@ -2086,6 +2090,8 @@
         const radius = baseRadius + (totalAngleMagnitude * radiusDecayFactor / FULL_TURN_RADIANS) * ORBIT_INDICATOR_TURN_SPACING;
         const x = otherParticle.x + Math.cos(angle) * radius;
         const y = otherParticle.y + Math.sin(angle) * radius;
+        previousPoint = lastPoint;
+        lastPoint = { x, y };
         if (segmentIndex === 0) {
           ctx.moveTo(x, y);
         } else {
@@ -2093,6 +2099,25 @@
         }
       }
       ctx.stroke();
+      if (previousPoint && lastPoint) {
+        const arrowAngle = Math.atan2(lastPoint.y - previousPoint.y, lastPoint.x - previousPoint.x);
+        ctx.fillStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${0.9 * orbitIndicatorVisibility})`;
+        ctx.strokeStyle = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, ${0.9 * orbitIndicatorVisibility})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(lastPoint.x, lastPoint.y);
+        ctx.lineTo(
+          lastPoint.x - Math.cos(arrowAngle - ORBIT_INDICATOR_ARROW_SPREAD_RADIANS) * ORBIT_INDICATOR_ARROW_LENGTH,
+          lastPoint.y - Math.sin(arrowAngle - ORBIT_INDICATOR_ARROW_SPREAD_RADIANS) * ORBIT_INDICATOR_ARROW_LENGTH
+        );
+        ctx.lineTo(
+          lastPoint.x - Math.cos(arrowAngle + ORBIT_INDICATOR_ARROW_SPREAD_RADIANS) * ORBIT_INDICATOR_ARROW_LENGTH,
+          lastPoint.y - Math.sin(arrowAngle + ORBIT_INDICATOR_ARROW_SPREAD_RADIANS) * ORBIT_INDICATOR_ARROW_LENGTH
+        );
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
       ctx.restore();
     });
   }
