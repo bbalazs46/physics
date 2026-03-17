@@ -14,6 +14,7 @@
   <div class="section">
     <h3>Részecskék</h3>
     <div class="btn-group">
+      <button class="btn-neutral" id="btnSelect">🎯 Részecske kijelölése</button>
       <button class="btn-neutral" id="btnMove">✋ Részecskék mozgatása</button>
       <button class="btn-add" id="btnAdd">➕ Részecske hozzáadása</button>
       <button class="btn-delete" id="btnDelete">🗑️ Részecske törlése</button>
@@ -233,6 +234,7 @@
   window.addEventListener('resize', resize);
 
   const statusEl = document.getElementById('status');
+  const btnSelect = document.getElementById('btnSelect');
   const btnMove = document.getElementById('btnMove');
   const btnAdd = document.getElementById('btnAdd');
   const btnDelete = document.getElementById('btnDelete');
@@ -274,7 +276,7 @@
   const collisionPredictionCountVal = document.getElementById('collisionPredictionCountVal');
   const collisionPredictionStyleInput = document.getElementById('collisionPredictionStyle');
 
-  const modeButtons = [btnMove, btnAdd, btnDelete, btnPin];
+  const modeButtons = [btnSelect, btnMove, btnAdd, btnDelete, btnPin];
   const PALETTES = {
     forest: { positive: '#f4e04d', negative: '#0b6e4f', neutral: '#b0bec5' },
     classic: { positive: '#ff5252', negative: '#0b3d91', neutral: '#b0bec5' }
@@ -851,6 +853,7 @@
     });
 
     const configs = {
+      select: { button: btnSelect, cursor: 'pointer', text: 'Kattints a vászonra a legközelebbi részecske kijelöléséhez.' },
       move: { button: btnMove, cursor: 'grab', text: 'Fogd meg és mozgasd a részecskéket.' },
       add: { button: btnAdd, cursor: 'crosshair', text: 'Kattints a vászonra új részecske hozzáadásához.' },
       delete: { button: btnDelete, cursor: 'pointer', text: 'Kattints egy részecskére a törléséhez.' },
@@ -864,6 +867,7 @@
     statusEl.textContent = config.text;
   }
 
+  btnSelect.addEventListener('click', () => setMode(mode === 'select' ? 'move' : 'select'));
   btnMove.addEventListener('click', () => setMode('move'));
   btnAdd.addEventListener('click', () => setMode('add'));
   btnDelete.addEventListener('click', () => setMode(mode === 'delete' ? 'move' : 'delete'));
@@ -1040,6 +1044,21 @@
     return null;
   }
 
+  function nearestParticle(x, y) {
+    let nearest = null;
+    let nearestDist2 = Infinity;
+    for (const particle of particles) {
+      const dx = particle.x - x;
+      const dy = particle.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < nearestDist2) {
+        nearestDist2 = d2;
+        nearest = particle;
+      }
+    }
+    return nearest;
+  }
+
   function recordDragPosition(x, y, time) {
     dragPositionHistory.push({ x, y, time });
     const cutoffTime = time - DRAG_VELOCITY_AVERAGE_WINDOW_MS;
@@ -1103,6 +1122,12 @@
     event.preventDefault();
     const { x, y } = getPos(event);
     const hit = particleAt(x, y);
+
+    if (mode === 'select') {
+      const nearest = nearestParticle(x, y);
+      if (nearest) setSelectedParticle(nearest);
+      return;
+    }
 
     if (mode === 'add' && !hit) {
       const particle = makeParticle(x, y);
