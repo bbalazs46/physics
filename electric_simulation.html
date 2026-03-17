@@ -585,7 +585,7 @@
   function applyChargeAcceleration(targetParticle, sourceX, sourceY, sourceCharge, acceleration) {
     const deltaX = targetParticle.x - sourceX;
     const deltaY = targetParticle.y - sourceY;
-    const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
+    const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON * 0.001;
     const dist = Math.sqrt(distSq);
     const chargeProduct = targetParticle.charge * sourceCharge;
     const rawForce = interactionForceMagnitude(chargeProduct, distSq, dist);
