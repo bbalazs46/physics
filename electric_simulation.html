@@ -282,7 +282,7 @@
     classic: { positive: '#ff5252', negative: '#0b3d91', neutral: '#b0bec5' }
   };
   const EPSILON = 600;
-  const EPSILON_FOR_MOVE = 1;
+  const EPSILON_FOR_MOVE = 6;
   const MAX_FORCE = 350;
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
@@ -343,13 +343,16 @@
   const FIELD_FLOW_DASH = [3, 12];
   const FIELD_FLOW_SPEED = 0.11;
   const FIELD_FLOW_CYCLE = 15;
-  // The physics loop advances in fixed-duration simulation steps based on elapsed time.
-  const SIMULATION_STEPS_PER_SECOND = 120;
+  // Keep the reference rate at the tuned physics cadence so changing the
+  // simulation step rate does not change the apparent motion speed.
+  const PHYSICS_REFERENCE_STEPS_PER_SECOND = 120;
+  const SIMULATION_STEPS_PER_SECOND = 1200;
+  const PHYSICS_STEP_SCALE = PHYSICS_REFERENCE_STEPS_PER_SECOND / SIMULATION_STEPS_PER_SECOND;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 0;
   const DEFAULT_COLLISION_PREDICTION_STYLE = 'path-numbered';
   const MAX_COLLISION_PREDICTION_COUNT = 12;
   const MIN_PREDICTION_STEPS = 240;
-  const MAX_PREDICTION_STEPS_PER_HIT = 1800;
+  const MAX_PREDICTION_STEPS_PER_HIT = 18000;
   const PREDICTION_PATH_SAMPLE_INTERVAL = 2;
   const PREDICTION_MARKER_RADIUS = 9;
   const PREDICTION_STEP_DURATION_MS = 1000 / SIMULATION_STEPS_PER_SECOND;
@@ -1342,7 +1345,8 @@
     return Math.max(1, stepIndex) * PREDICTION_STEP_DURATION_MS;
   }
 
-  function advanceParticleSystem(particleList, trackedEnergy, excludedParticle = null, previewState = null) {
+  function advanceParticleSystem(particleList, trackedEnergy, excludedParticle = null, previewState = null, stepScale = 1) {
+    const velocityDamping = Math.pow(damping, stepScale);
     for (let i = 0; i < particleList.length; i++) {
       const currentParticle = particleList[i];
       if (currentParticle.pinned || currentParticle === excludedParticle) continue;
@@ -1358,8 +1362,8 @@
         applyChargeAcceleration(currentParticle, wallSample.x, wallSample.y, wallSample.charge, acceleration);
       }
 
-      currentParticle.vx += acceleration.x;
-      currentParticle.vy += acceleration.y;
+      currentParticle.vx += acceleration.x * stepScale;
+      currentParticle.vy += acceleration.y * stepScale;
     }
 
     if (energyCorrectionEnabled) {
@@ -1369,10 +1373,10 @@
     let collisionOccurred = false;
     for (const particle of particleList) {
       if (particle.pinned || particle === excludedParticle) continue;
-      particle.vx *= damping;
-      particle.vy *= damping;
-      particle.x += particle.vx;
-      particle.y += particle.vy;
+      particle.vx *= velocityDamping;
+      particle.vy *= velocityDamping;
+      particle.x += particle.vx * stepScale;
+      particle.y += particle.vy * stepScale;
 
       let hitWall = null;
       if (particle.x - particle.r < 0) {
@@ -1440,7 +1444,7 @@
     for (let stepIndex = 0; stepIndex < maxSteps && previewState.hits.length < collisionPredictionCount; stepIndex++) {
       const hitCountBeforeStep = previewState.hits.length;
       previewState.stepIndex = stepIndex + 1;
-      const result = advanceParticleSystem(simulatedParticles, simulatedTrackedEnergy, null, previewState);
+      const result = advanceParticleSystem(simulatedParticles, simulatedTrackedEnergy, null, previewState, PHYSICS_STEP_SCALE);
       simulatedTrackedEnergy = result.trackedEnergy;
       if (!orbitIndicatorLimitReached) {
         recordOrbitPreviewStep(simulatedTarget, orbitTrackers);
@@ -1500,7 +1504,7 @@
       resetTrackedTotalEnergy();
     }
 
-    const result = advanceParticleSystem(particles, trackedTotalEnergy, dragged);
+    const result = advanceParticleSystem(particles, trackedTotalEnergy, dragged, null, PHYSICS_STEP_SCALE);
     trackedTotalEnergy = result.trackedEnergy;
     if (result.collisionOccurred) {
       markCollisionPredictionDirty();
