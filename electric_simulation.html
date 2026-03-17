@@ -282,8 +282,8 @@
     classic: { positive: '#ff5252', negative: '#0b3d91', neutral: '#b0bec5' }
   };
   const EPSILON = 600;
-  const EPSILON_FOR_MOVE = 0.01;
-  const MAX_FORCE = 35000;
+  const EPSILON_FOR_MOVE = 1;
+  const MAX_FORCE = 350;
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
   const WALL_BOUNCE_COEFFICIENT = 1.0;
@@ -344,7 +344,7 @@
   const FIELD_FLOW_SPEED = 0.11;
   const FIELD_FLOW_CYCLE = 15;
   // The physics loop advances in fixed-duration simulation steps based on elapsed time.
-  const SIMULATION_STEPS_PER_SECOND = 1200;
+  const SIMULATION_STEPS_PER_SECOND = 12000;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 0;
   const DEFAULT_COLLISION_PREDICTION_STYLE = 'path-numbered';
   const MAX_COLLISION_PREDICTION_COUNT = 12;
