@@ -281,8 +281,9 @@
     forest: { positive: '#f4e04d', negative: '#0b6e4f', neutral: '#b0bec5' },
     classic: { positive: '#ff5252', negative: '#0b3d91', neutral: '#b0bec5' }
   };
-  const EPSILON = 0.6;
-  const MAX_FORCE = 35000;
+  const EPSILON = 600;
+  const EPSILON_FOR_MOVE = 100;
+  const MAX_FORCE = 350;
   const INTERPOLATION_EPSILON = 1e-6;
   const MIN_PARTICLE_MASS = 0.1;
   const WALL_BOUNCE_COEFFICIENT = 1.0;
@@ -585,7 +586,7 @@
   function applyChargeAcceleration(targetParticle, sourceX, sourceY, sourceCharge, acceleration) {
     const deltaX = targetParticle.x - sourceX;
     const deltaY = targetParticle.y - sourceY;
-    const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON * 0.001;
+    const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON_FOR_MOVE;
     const dist = Math.sqrt(distSq);
     const chargeProduct = targetParticle.charge * sourceCharge;
     const rawForce = interactionForceMagnitude(chargeProduct, distSq, dist);
