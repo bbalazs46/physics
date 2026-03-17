@@ -1266,6 +1266,7 @@
       const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
       const dist = Math.sqrt(distSq);
       const scale = positiveTestFieldScale(particle.charge, distSq, dist);
+      console.log(dist);
       fieldX += deltaX * scale;
       fieldY += deltaY * scale;
     }
