@@ -357,7 +357,7 @@
   canvas.addEventListener('touchend',   onPointerUp);
 
   // ─── Physics ──────────────────────────────────────────────────────────────────
-  function step() {
+  function step(stepScale = 1) {
     if (paused) return;
 
     // Apply spring forces (Hooke's law)
@@ -369,27 +369,36 @@
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
 
-      if (!s.a.pinned && s.a !== dragged) { s.a.vx += fx; s.a.vy += fy; }
-      if (!s.b.pinned && s.b !== dragged) { s.b.vx -= fx; s.b.vy -= fy; }
+      if (!s.a.pinned && s.a !== dragged) { s.a.vx += fx * stepScale; s.a.vy += fy * stepScale; }
+      if (!s.b.pinned && s.b !== dragged) { s.b.vx -= fx * stepScale; s.b.vy -= fy * stepScale; }
     }
 
     // Gravity + integration
     for (const b of balls) {
       if (b.pinned || b === dragged) continue;
 
-      if (gravityOn) b.vy += gravity;
+      if (gravityOn) b.vy += gravity * stepScale;
 
-      b.vx *= damping;
-      b.vy *= damping;
+      b.vx *= Math.pow(damping, stepScale);
+      b.vy *= Math.pow(damping, stepScale);
 
-      b.x += b.vx;
-      b.y += b.vy;
+      b.x += b.vx * stepScale;
+      b.y += b.vy * stepScale;
 
       // Bounce off walls
       if (b.x - b.r < 0)             { b.x = b.r;              b.vx *= -0.6; }
       if (b.x + b.r > canvas.width)  { b.x = canvas.width - b.r; b.vx *= -0.6; }
       if (b.y - b.r < 0)             { b.y = b.r;              b.vy *= -0.6; }
       if (b.y + b.r > canvas.height) { b.y = canvas.height - b.r; b.vy *= -0.6; }
+    }
+  }
+
+  function advanceSimulation(stepScale = 1) {
+    let remainingStepScale = stepScale;
+    while (remainingStepScale > 0) {
+      const currentStepScale = Math.min(remainingStepScale, 1);
+      step(currentStepScale);
+      remainingStepScale -= currentStepScale;
     }
   }
 
@@ -495,7 +504,9 @@
   }
 
   // ─── Main loop ────────────────────────────────────────────────────────────────
+  const PHYSICS_REFERENCE_STEPS_PER_SECOND = 240;
   const SIMULATION_STEPS_PER_SECOND = 240;
+  const PHYSICS_STEP_SCALE = PHYSICS_REFERENCE_STEPS_PER_SECOND / SIMULATION_STEPS_PER_SECOND;
   const FIXED_STEP_MS = 1000 / SIMULATION_STEPS_PER_SECOND;
   const MAX_FRAME_DELTA_MS = 100;
   let previousFrameTime = null;
@@ -507,7 +518,7 @@
       accumulatedStepTime += Math.min(frameTime - previousFrameTime, MAX_FRAME_DELTA_MS) * timeScale;
       previousFrameTime = frameTime;
       while (accumulatedStepTime >= FIXED_STEP_MS) {
-        step();
+        advanceSimulation(PHYSICS_STEP_SCALE);
         accumulatedStepTime -= FIXED_STEP_MS;
       }
     }
