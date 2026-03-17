@@ -1266,6 +1266,7 @@
       const distSq = deltaX * deltaX + deltaY * deltaY + EPSILON;
       const dist = Math.sqrt(distSq);
       const scale = positiveTestFieldScale(particle.charge, distSq, dist);
+      console.log(dist);
       fieldX += deltaX * scale;
       fieldY += deltaY * scale;
     }
@@ -2099,7 +2100,7 @@
     drawParticles();
   }
 
-  const MAX_FRAME_DELTA_MS = 100;
+  const MAX_FRAME_DELTA_MS = 10;
   let previousFrameTime = null;
   let accumulatedStepTime = 0;
   function loop(frameTime) {
