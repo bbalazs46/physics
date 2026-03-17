@@ -224,6 +224,7 @@
   const BALL_COLORS = ['#e94560','#4fc3f7','#81c784','#ffb74d','#ce93d8','#80cbc4','#fff176'];
   const DEFAULT_SPRING_REST_LENGTH = 80;
   const EPSILON = 0.001; // prevent division by zero
+  const STEP_SCALE_EPSILON = 1e-10;
 
   let colorIdx = 0;
 
@@ -360,6 +361,8 @@
   function step(stepScale = 1) {
     if (paused) return;
 
+    const velocityDamping = Math.pow(damping, stepScale);
+
     // Apply spring forces (Hooke's law)
     for (const s of springs) {
       const dx = s.b.x - s.a.x;
@@ -379,8 +382,8 @@
 
       if (gravityOn) b.vy += gravity * stepScale;
 
-      b.vx *= Math.pow(damping, stepScale);
-      b.vy *= Math.pow(damping, stepScale);
+      b.vx *= velocityDamping;
+      b.vy *= velocityDamping;
 
       b.x += b.vx * stepScale;
       b.y += b.vy * stepScale;
@@ -395,7 +398,7 @@
 
   function advanceSimulation(stepScale = 1) {
     let remainingStepScale = stepScale;
-    while (remainingStepScale > 0) {
+    while (remainingStepScale > STEP_SCALE_EPSILON) {
       const currentStepScale = Math.min(remainingStepScale, 1);
       step(currentStepScale);
       remainingStepScale -= currentStepScale;
@@ -504,6 +507,8 @@
   }
 
   // ─── Main loop ────────────────────────────────────────────────────────────────
+  // Keep the reference rate at the tuned physics cadence so changing the
+  // simulation step rate does not change the apparent motion speed.
   const PHYSICS_REFERENCE_STEPS_PER_SECOND = 240;
   const SIMULATION_STEPS_PER_SECOND = 240;
   const PHYSICS_STEP_SCALE = PHYSICS_REFERENCE_STEPS_PER_SECOND / SIMULATION_STEPS_PER_SECOND;
