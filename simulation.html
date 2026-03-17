@@ -72,6 +72,13 @@
       <button class="btn-neutral" id="btnPause">⏸️ Szünet</button>
       <button class="btn-neutral" id="btnReset">🔄 Reset</button>
     </div>
+    <div class="slider-row mt-8">
+      <div class="slider-label">
+        <span>Idő sebessége</span>
+        <span id="timeScaleVal">1.0×</span>
+      </div>
+      <input type="range" id="timeScaleInput" min="0.1" max="3" step="0.1" value="1" />
+    </div>
   </div>
 
   <div id="status">Kattints a vászonra labda hozzáadásához.</div>
@@ -109,6 +116,7 @@
   let gravityOn = true;
   let straightSprings = true;
   let zeroRestLength = true;
+  let timeScale = 1.0;
 
   // Drag state
   let dragged   = null;
@@ -205,6 +213,11 @@
   springZeroRestIn.addEventListener('change', () => {
     zeroRestLength = springZeroRestIn.checked;
     updateSpringRestLengths();
+  });
+
+  document.getElementById('timeScaleInput').addEventListener('input', (e) => {
+    timeScale = parseFloat(e.target.value);
+    document.getElementById('timeScaleVal').textContent = timeScale.toFixed(1) + '×';
   });
 
   // ─── Constants ────────────────────────────────────────────────────────────────
@@ -491,7 +504,7 @@
     if (previousFrameTime === null) {
       previousFrameTime = frameTime;
     } else {
-      accumulatedStepTime += Math.min(frameTime - previousFrameTime, MAX_FRAME_DELTA_MS);
+      accumulatedStepTime += Math.min(frameTime - previousFrameTime, MAX_FRAME_DELTA_MS) * timeScale;
       previousFrameTime = frameTime;
       while (accumulatedStepTime >= FIXED_STEP_MS) {
         step();
