@@ -1457,6 +1457,7 @@
       if (replayBufferIndex >= buf.length) {
         markCollisionPredictionDirty();
         trackedTotalEnergy = null;
+        maybeRefreshCollisionPrediction();
       }
       return;
     }
@@ -2003,7 +2004,7 @@
 
     if (!selectedParticle || !preview.orbitIndicators || preview.orbitIndicators.length === 0) return;
 
-    const elapsedSteps = Math.max(0, (performance.now() - preview.createdAtMs) / PREDICTION_STEP_DURATION_MS);
+    const elapsedSteps = replayBufferIndex;
     const activeCollisionHit = preview.hits[0] || null;
     if (!activeCollisionHit) return;
     preview.orbitIndicators.forEach(indicator => {
