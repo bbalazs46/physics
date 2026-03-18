@@ -16,6 +16,7 @@
     <div class="btn-group">
       <button class="btn-neutral" id="btnSelect">🎯 Részecske kijelölése</button>
       <button class="btn-neutral" id="btnMove">✋ Részecskék mozgatása</button>
+      <button class="btn-neutral" id="btnRotate">🔄 Pálya változtatása</button>
       <button class="btn-add" id="btnAdd">➕ Részecske hozzáadása</button>
       <button class="btn-delete" id="btnDelete">🗑️ Részecske törlése</button>
       <button class="btn-pin" id="btnPin">📌 Részecske rögzítése</button>
@@ -196,6 +197,14 @@
         <option value="fading-dots">Halványuló piros pontok</option>
       </select>
     </div>
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="collisionTopologyFlexInput" />
+      <label for="collisionTopologyFlexInput" title="Engedi, hogy a részecske másik oldalról kerülje meg a többi részecskét, de csak akkor, ha a régi kerülési iránnyal már nem érhető el a célpont.">Szükség esetén a mozgás topológiája is változhat</label>
+    </div>
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="dragDuringMotionInput" />
+      <label for="dragDuringMotionInput">Pálya mozgatása mozgás közben</label>
+    </div>
     <div class="button-row">
       <button class="btn-neutral" id="btnPause">⏸️ Szünet</button>
       <button class="btn-neutral" id="btnReset">🔄 Reset</button>
@@ -236,6 +245,7 @@
   const statusEl = document.getElementById('status');
   const btnSelect = document.getElementById('btnSelect');
   const btnMove = document.getElementById('btnMove');
+  const btnRotate = document.getElementById('btnRotate');
   const btnAdd = document.getElementById('btnAdd');
   const btnDelete = document.getElementById('btnDelete');
   const btnPin = document.getElementById('btnPin');
@@ -275,8 +285,10 @@
   const collisionPredictionCountInput = document.getElementById('collisionPredictionCountInput');
   const collisionPredictionCountVal = document.getElementById('collisionPredictionCountVal');
   const collisionPredictionStyleInput = document.getElementById('collisionPredictionStyle');
+  const collisionTopologyFlexInput = document.getElementById('collisionTopologyFlexInput');
+  const dragDuringMotionInput = document.getElementById('dragDuringMotionInput');
 
-  const modeButtons = [btnSelect, btnMove, btnAdd, btnDelete, btnPin];
+  const modeButtons = [btnSelect, btnMove, btnRotate, btnAdd, btnDelete, btnPin];
   const PALETTES = {
     forest: { positive: '#f4e04d', negative: '#0b6e4f', neutral: '#b0bec5' },
     classic: { positive: '#ff5252', negative: '#0b3d91', neutral: '#b0bec5' }
@@ -358,9 +370,32 @@
   const PREDICTION_STEP_DURATION_MS = 1000 / SIMULATION_STEPS_PER_SECOND;
   const PREDICTION_DOT_MIN_ALPHA = 0.18;
   const PREDICTION_DOT_ALPHA_RANGE = 0.68;
+  // Prediction-marker dragging now prefers smooth, continuous trajectory updates over exact collision placement.
+  const COLLISION_DRAG_LOCAL_SEARCH_DIVISOR = 2.4;
+  const COLLISION_DRAG_LOCAL_SEARCH_RANGE = Math.PI / COLLISION_DRAG_LOCAL_SEARCH_DIVISOR;
+  const COLLISION_DRAG_LOCAL_SAMPLE_COUNT = 15;
+  const COLLISION_DRAG_WIDE_SAMPLE_COUNT = 25;
+  const COLLISION_DRAG_REFINE_SAMPLE_COUNT = 9;
+  const COLLISION_DRAG_REFINE_PASSES = 2;
+  const COLLISION_DRAG_POINTER_GUIDE_BLEND = 0.55;
+  const COLLISION_DRAG_DIRECTION_BLEND = 0.4;
+  const COLLISION_DRAG_SMOOTHNESS_WEIGHT = 36;
+  const COLLISION_DRAG_LOCAL_PREFERENCE_BONUS = 18;
+  const COLLISION_DRAG_ACCEPTABLE_DISTANCE = 18;
+  const COLLISION_DRAG_TARGET_TOLERANCE = 3;
+  const COLLISION_DRAG_STEP_MULTIPLIER = 2;
+  const COLLISION_DRAG_STEP_PADDING = 240;
+  const COLLISION_DRAG_REFINE_RANGE_DIVISOR = 3;
+  const MIN_DRAGGABLE_COLLISION_SPEED = 1e-6;
+  const TOPOLOGY_MATCH_ANGLE_TOLERANCE_RATIO = 0.8;
+  const TOPOLOGY_MATCH_ANGLE_TOLERANCE = Math.PI * TOPOLOGY_MATCH_ANGLE_TOLERANCE_RATIO;
+  const TOPOLOGY_SIGNIFICANCE_RATIO = 0.75;
+  const TOPOLOGY_SIGNIFICANCE_THRESHOLD = (Math.PI / 10) * TOPOLOGY_SIGNIFICANCE_RATIO;
+  const TOPOLOGY_PRESERVED_INDICATOR_COLOR = 'rgba(255, 255, 255, 0.92)';
   const PREDICTION_DOT_COLOR_RGB = '255, 82, 82';
   const FULL_TURN_RADIANS = Math.PI * 2;
   const ORBIT_INDICATOR_COLOR_RGB = '255, 240, 170';
+  const TOPOLOGY_CHANGED_INDICATOR_COLOR = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, 0.95)`;
   const ORBIT_INDICATOR_RADIUS_OFFSET = 12;
   const ORBIT_INDICATOR_MIN_SWEEP_RADIANS = Math.PI / 10;
   const ORBIT_INDICATOR_FADE_START_SWEEP_RADIANS = Math.PI;
@@ -420,6 +455,8 @@
   let perfectContourFillEnabled = DEFAULT_PERFECT_CONTOUR_FILL;
   let collisionPredictionCount = DEFAULT_COLLISION_PREDICTION_COUNT;
   let collisionPredictionStyle = DEFAULT_COLLISION_PREDICTION_STYLE;
+  let collisionTopologyFlexEnabled = false;
+  let dragDuringMotionEnabled = false;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
@@ -427,6 +464,9 @@
   let predictedCollisionPreview = { path: [], hits: [], orbitIndicators: [], replayBuffer: [], createdAtMs: 0, maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
   let collisionPredictionDirty = true;
   let replayBufferIndex = 0;
+  let draggedCollisionPoint = null;
+  let draggedPathRotation = null;
+  let dragPausedSimulation = false;
   window.addEventListener('resize', markCollisionPredictionDirty);
   function syncControlInputsToState() {
     massInput.value = String(nextParticleMass);
@@ -451,6 +491,27 @@
     collisionPredictionCountInput.max = String(MAX_COLLISION_PREDICTION_COUNT);
     collisionPredictionCountInput.value = String(collisionPredictionCount);
     collisionPredictionStyleInput.value = collisionPredictionStyle;
+    collisionTopologyFlexInput.checked = collisionTopologyFlexEnabled;
+    dragDuringMotionInput.checked = dragDuringMotionEnabled;
+  }
+
+  function syncPauseButtonLabel() {
+    btnPause.textContent = paused ? '▶️ Folytatás' : '⏸️ Szünet';
+  }
+
+  function beginPredictionDragPause() {
+    dragPausedSimulation = false;
+    if (dragDuringMotionEnabled || paused) return;
+    paused = true;
+    dragPausedSimulation = true;
+    syncPauseButtonLabel();
+  }
+
+  function endPredictionDragPause() {
+    if (!dragPausedSimulation) return;
+    paused = false;
+    dragPausedSimulation = false;
+    syncPauseButtonLabel();
   }
 
   function radiusForMass(mass) {
@@ -676,6 +737,17 @@
     collisionPredictionCountVal.textContent = Math.round(collisionPredictionCount);
   }
 
+  function emptyCollisionPredictionPreview() {
+    return {
+      path: [],
+      hits: [],
+      orbitIndicators: [],
+      replayBuffer: [],
+      createdAtMs: performance.now(),
+      maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS
+    };
+  }
+
   function updateContourControlState() {
     contourLineFrequencyInput.disabled = uniformContoursEnabled;
     uniformContourStepInput.disabled = !uniformContoursEnabled;
@@ -860,7 +932,8 @@
 
     const configs = {
       select: { button: btnSelect, cursor: 'pointer', text: 'Kattints a vászonra a legközelebbi részecske kijelöléséhez.' },
-      move: { button: btnMove, cursor: 'grab', text: 'Fogd meg és mozgasd a részecskéket.' },
+      move: { button: btnMove, cursor: 'grab', text: 'Fogd meg és mozgasd a részecskéket, vagy húzd az előrejelzett ütközési pontokat.' },
+      rotate: { button: btnRotate, cursor: 'cell', text: 'Húzd az egeret a kijelölt részecske körül a pálya elforgatásához.' },
       add: { button: btnAdd, cursor: 'crosshair', text: 'Kattints a vászonra új részecske hozzáadásához.' },
       delete: { button: btnDelete, cursor: 'pointer', text: 'Kattints egy részecskére a törléséhez.' },
       pin: { button: btnPin, cursor: 'pointer', text: 'Kattints egy részecskére a rögzítéshez vagy feloldáshoz.' }
@@ -873,26 +946,47 @@
     statusEl.textContent = config.text;
   }
 
+  function syncCanvasCursorToMode() {
+    if (mode === 'move') {
+      canvas.style.cursor = 'grab';
+      return;
+    }
+    if (mode === 'add') {
+      canvas.style.cursor = 'crosshair';
+      return;
+    }
+    if (mode === 'rotate') {
+      canvas.style.cursor = 'cell';
+      return;
+    }
+    canvas.style.cursor = 'pointer';
+  }
+
   btnSelect.addEventListener('click', () => setMode(mode === 'select' ? 'move' : 'select'));
   btnMove.addEventListener('click', () => setMode('move'));
+  btnRotate.addEventListener('click', () => setMode(mode === 'rotate' ? 'move' : 'rotate'));
   btnAdd.addEventListener('click', () => setMode('add'));
   btnDelete.addEventListener('click', () => setMode(mode === 'delete' ? 'move' : 'delete'));
   btnPin.addEventListener('click', () => setMode(mode === 'pin' ? 'move' : 'pin'));
 
   btnPause.addEventListener('click', () => {
     paused = !paused;
-    btnPause.textContent = paused ? '▶️ Folytatás' : '⏸️ Szünet';
+    dragPausedSimulation = false;
+    syncPauseButtonLabel();
   });
 
   btnReset.addEventListener('click', () => {
     particles = [];
     dragged = null;
+    draggedCollisionPoint = null;
+    draggedPathRotation = null;
+    dragPausedSimulation = false;
     selectedParticle = null;
     dragVelocityX = 0;
     dragVelocityY = 0;
     dragLastMoveTime = 0;
     paused = false;
-    btnPause.textContent = '⏸️ Szünet';
+    syncPauseButtonLabel();
     initDemo();
     resetTrackedTotalEnergy();
     setMode('move');
@@ -1023,6 +1117,12 @@
   collisionPredictionStyleInput.addEventListener('change', () => {
     collisionPredictionStyle = collisionPredictionStyleInput.value;
   });
+  collisionTopologyFlexInput.addEventListener('change', () => {
+    collisionTopologyFlexEnabled = collisionTopologyFlexInput.checked;
+  });
+  dragDuringMotionInput.addEventListener('change', () => {
+    dragDuringMotionEnabled = dragDuringMotionInput.checked;
+  });
 
   document.getElementById('timeScaleInput').addEventListener('input', (e) => {
     timeScale = parseFloat(e.target.value);
@@ -1046,6 +1146,22 @@
       const dx = particle.x - x;
       const dy = particle.y - y;
       if (dx * dx + dy * dy <= particle.r * particle.r) return particle;
+    }
+    return null;
+  }
+
+  function collisionPointAt(x, y) {
+    if (!selectedParticle || selectedParticle.pinned || collisionPredictionCount <= 0) return null;
+    const preview = predictedCollisionPreview;
+    if (!preview || !preview.hits) return null;
+    const markerRadiusSq = PREDICTION_MARKER_RADIUS * PREDICTION_MARKER_RADIUS;
+    for (let index = preview.hits.length - 1; index >= 0; index--) {
+      const hit = preview.hits[index];
+      const dx = hit.x - x;
+      const dy = hit.y - y;
+      if (dx * dx + dy * dy <= markerRadiusSq) {
+        return { hit, index };
+      }
     }
     return null;
   }
@@ -1124,10 +1240,205 @@
     dragVelocityY = ((latestPosition.y - startPosition.y) / elapsedTime) * DRAG_VELOCITY_FRAME_MS;
   }
 
+  function projectPointToCollisionWall(x, y, wall) {
+    if (wall === 'left') return { x: 0, y: Math.max(0, Math.min(canvas.height, y)) };
+    if (wall === 'right') return { x: canvas.width, y: Math.max(0, Math.min(canvas.height, y)) };
+    if (wall === 'top') return { x: Math.max(0, Math.min(canvas.width, x)), y: 0 };
+    return { x: Math.max(0, Math.min(canvas.width, x)), y: canvas.height };
+  }
+
+  function buildTopologySnapshot(orbitTrackers) {
+    return orbitTrackers
+      .map(tracker => ({
+        particleId: tracker.particleId,
+        angle: tracker.cumulativeAngles[tracker.cumulativeAngles.length - 1]
+      }))
+      .filter(entry => Math.abs(entry.angle) >= TOPOLOGY_SIGNIFICANCE_THRESHOLD);
+  }
+
+  function topologyMatches(sourceTopology = [], candidateTopology = []) {
+    const sourceMap = new Map(sourceTopology.map(entry => [entry.particleId, entry.angle]));
+    const candidateMap = new Map(candidateTopology.map(entry => [entry.particleId, entry.angle]));
+    const particleIds = new Set([...sourceMap.keys(), ...candidateMap.keys()]);
+    for (const particleId of particleIds) {
+      const sourceAngle = sourceMap.get(particleId) || 0;
+      const candidateAngle = candidateMap.get(particleId) || 0;
+      if (Math.abs(sourceAngle) < TOPOLOGY_SIGNIFICANCE_THRESHOLD && Math.abs(candidateAngle) < TOPOLOGY_SIGNIFICANCE_THRESHOLD) {
+        continue;
+      }
+      if (Math.abs(sourceAngle) < TOPOLOGY_SIGNIFICANCE_THRESHOLD || Math.abs(candidateAngle) < TOPOLOGY_SIGNIFICANCE_THRESHOLD) {
+        return false;
+      }
+      if (Math.sign(sourceAngle) !== Math.sign(candidateAngle)) {
+        return false;
+      }
+      if (Math.abs(sourceAngle - candidateAngle) > TOPOLOGY_MATCH_ANGLE_TOLERANCE) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function evaluateCollisionDragCandidate(particle, dragState, targetPoint, angle, requireMatchingTopology) {
+    const velocityX = Math.cos(angle) * dragState.speed;
+    const velocityY = Math.sin(angle) * dragState.speed;
+    const preview = computeCollisionPredictionPreview({
+      targetParticleId: particle.id,
+      velocityOverride: { vx: velocityX, vy: velocityY },
+      maxHits: dragState.hitIndex + 1,
+      maxSteps: dragState.maxSteps
+    });
+    const hit = preview.hits[dragState.hitIndex];
+    if (!hit || hit.wall !== dragState.wall) return null;
+    const topologyChanged = !topologyMatches(dragState.sourceTopology, hit.topology || []);
+    if (requireMatchingTopology && topologyChanged) return null;
+    return {
+      angle,
+      velocityX,
+      velocityY,
+      preview,
+      topologyChanged,
+      distance: Math.hypot(hit.x - targetPoint.x, hit.y - targetPoint.y),
+      angleDelta: Math.abs(normalizeAngleDelta(angle - dragState.lastSolvedAngle))
+    };
+  }
+
+  function candidateContinuityScore(candidate, preferLocalCandidate = false) {
+    if (!candidate) return Infinity;
+    const localityBonus = preferLocalCandidate ? COLLISION_DRAG_LOCAL_PREFERENCE_BONUS : 0;
+    return candidate.distance + candidate.angleDelta * COLLISION_DRAG_SMOOTHNESS_WEIGHT - localityBonus;
+  }
+
+  function searchCollisionDragCandidates(particle, dragState, targetPoint, centerAngle, halfRange, sampleCount, requireMatchingTopology, preferLocalCandidate = false) {
+    let bestCandidate = null;
+    if (sampleCount <= 1) {
+      return evaluateCollisionDragCandidate(particle, dragState, targetPoint, centerAngle, requireMatchingTopology);
+    }
+    const angleStep = (halfRange * 2) / (sampleCount - 1);
+    let bestCandidateScore = Infinity;
+    for (let index = 0; index < sampleCount; index++) {
+      const angle = centerAngle - halfRange + angleStep * index;
+      const candidate = evaluateCollisionDragCandidate(particle, dragState, targetPoint, angle, requireMatchingTopology);
+      if (!candidate) continue;
+      const candidateScore = candidateContinuityScore(candidate, preferLocalCandidate);
+      if (!bestCandidate || candidateScore < bestCandidateScore) {
+        bestCandidate = candidate;
+        bestCandidateScore = candidateScore;
+      }
+    }
+    return bestCandidate;
+  }
+
+  function findBestCollisionDragCandidate(particle, dragState, targetPoint, requireMatchingTopology, preferredAngle = null) {
+    const baseAngle = typeof preferredAngle === 'number'
+      ? preferredAngle
+      : typeof dragState.lastSolvedAngle === 'number'
+      ? dragState.lastSolvedAngle
+      : Math.atan2(particle.vy, particle.vx);
+    let bestCandidate = searchCollisionDragCandidates(
+      particle,
+      dragState,
+      targetPoint,
+      baseAngle,
+      COLLISION_DRAG_LOCAL_SEARCH_RANGE,
+      COLLISION_DRAG_LOCAL_SAMPLE_COUNT,
+      requireMatchingTopology,
+      true
+    );
+    if (!bestCandidate || bestCandidate.distance > COLLISION_DRAG_ACCEPTABLE_DISTANCE) {
+      const wideCandidate = searchCollisionDragCandidates(
+        particle,
+        dragState,
+        targetPoint,
+        baseAngle,
+        Math.PI,
+        COLLISION_DRAG_WIDE_SAMPLE_COUNT,
+        requireMatchingTopology,
+        false
+      );
+      const wideCandidateScore = candidateContinuityScore(wideCandidate, false);
+      const localCandidateScore = candidateContinuityScore(bestCandidate, true);
+      if (wideCandidate && (!bestCandidate || wideCandidateScore < localCandidateScore)) {
+        bestCandidate = wideCandidate;
+      }
+    }
+    if (!bestCandidate) return null;
+
+    let refineRange = COLLISION_DRAG_LOCAL_SEARCH_RANGE / COLLISION_DRAG_REFINE_RANGE_DIVISOR;
+    let currentBestScore = candidateContinuityScore(bestCandidate, true);
+    for (let passIndex = 0; passIndex < COLLISION_DRAG_REFINE_PASSES; passIndex++) {
+      const refinedCandidate = searchCollisionDragCandidates(
+        particle,
+        dragState,
+        targetPoint,
+        bestCandidate.angle,
+        refineRange,
+        COLLISION_DRAG_REFINE_SAMPLE_COUNT,
+        requireMatchingTopology,
+        true
+      );
+      const refinedCandidateScore = candidateContinuityScore(refinedCandidate, true);
+      if (refinedCandidate && refinedCandidateScore < currentBestScore) {
+        bestCandidate = refinedCandidate;
+        currentBestScore = refinedCandidateScore;
+      }
+      refineRange /= COLLISION_DRAG_REFINE_RANGE_DIVISOR;
+    }
+
+    return bestCandidate;
+  }
+
+  function updateDraggedCollisionTarget(particle, dragState, pointerX, pointerY) {
+    const targetPoint = projectPointToCollisionWall(pointerX, pointerY, dragState.wall);
+    const currentAngle = typeof dragState.lastSolvedAngle === 'number'
+      ? dragState.lastSolvedAngle
+      : Math.atan2(particle.vy, particle.vx);
+    const pointerAngle = Math.atan2(pointerY - particle.y, pointerX - particle.x);
+    const guidedAngle = currentAngle + normalizeAngleDelta(pointerAngle - currentAngle) * COLLISION_DRAG_POINTER_GUIDE_BLEND;
+
+    let bestCandidate = findBestCollisionDragCandidate(particle, dragState, targetPoint, true, guidedAngle);
+    if (collisionTopologyFlexEnabled && (!bestCandidate || bestCandidate.distance > COLLISION_DRAG_TARGET_TOLERANCE)) {
+      const flexibleCandidate = findBestCollisionDragCandidate(particle, dragState, targetPoint, false, guidedAngle);
+      if (flexibleCandidate && (!bestCandidate || flexibleCandidate.distance < bestCandidate.distance)) {
+        bestCandidate = flexibleCandidate;
+      }
+    }
+    if (!bestCandidate) return false;
+
+    const blendedAngle = currentAngle + normalizeAngleDelta(bestCandidate.angle - currentAngle) * COLLISION_DRAG_DIRECTION_BLEND;
+    particle.vx = Math.cos(blendedAngle) * dragState.speed;
+    particle.vy = Math.sin(blendedAngle) * dragState.speed;
+    dragState.lastSolvedAngle = blendedAngle;
+    dragState.targetX = targetPoint.x;
+    dragState.targetY = targetPoint.y;
+    dragState.topologyChanged = bestCandidate.topologyChanged;
+    predictedCollisionPreview = computeCollisionPredictionPreview({
+      targetParticleId: particle.id,
+      velocityOverride: { vx: particle.vx, vy: particle.vy },
+      maxHits: dragState.hitIndex + 1,
+      maxSteps: dragState.maxSteps
+    });
+    collisionPredictionDirty = false;
+    replayBufferIndex = 0;
+    return true;
+  }
+
+  function updateDraggedPathRotation(rotationState, pointerX, pointerY) {
+    const pointerAngle = Math.atan2(pointerY - rotationState.particle.y, pointerX - rotationState.particle.x);
+    const angleDelta = normalizeAngleDelta(pointerAngle - rotationState.startPointerAngle);
+    const nextAngle = rotationState.startVelocityAngle + angleDelta;
+    rotationState.particle.vx = Math.cos(nextAngle) * rotationState.speed;
+    rotationState.particle.vy = Math.sin(nextAngle) * rotationState.speed;
+    markCollisionPredictionDirty();
+    maybeRefreshCollisionPrediction();
+    replayBufferIndex = 0;
+  }
+
   function onPointerDown(event) {
     event.preventDefault();
     const { x, y } = getPos(event);
-    const hit = particleAt(x, y);
+    const collisionPointHit = collisionPointAt(x, y);
+    const particleHit = particleAt(x, y);
 
     if (mode === 'select') {
       const nearest = nearestParticle(x, y);
@@ -1135,7 +1446,7 @@
       return;
     }
 
-    if (mode === 'add' && !hit) {
+    if (mode === 'add' && !particleHit) {
       const particle = makeParticle(x, y);
       particles.push(particle);
       setSelectedParticle(particle);
@@ -1146,9 +1457,9 @@
       return;
     }
 
-    if (mode === 'delete' && hit) {
-      particles = particles.filter(particle => particle !== hit);
-      if (selectedParticle === hit) {
+    if (mode === 'delete' && particleHit) {
+      particles = particles.filter(particle => particle !== particleHit);
+      if (selectedParticle === particleHit) {
         selectedParticle = null;
       }
       resetTrackedTotalEnergy();
@@ -1157,34 +1468,81 @@
       return;
     }
 
-    if (mode === 'pin' && hit) {
-      hit.pinned = !hit.pinned;
-      if (hit.pinned) {
-        hit.vx = 0;
-        hit.vy = 0;
+    if (mode === 'pin' && particleHit) {
+      particleHit.pinned = !particleHit.pinned;
+      if (particleHit.pinned) {
+        particleHit.vx = 0;
+        particleHit.vy = 0;
       }
-      setSelectedParticle(hit);
+      setSelectedParticle(particleHit);
       resetTrackedTotalEnergy();
-      statusEl.textContent = hit.pinned ? 'Részecske rögzítve.' : 'Részecske feloldva.';
+      statusEl.textContent = particleHit.pinned ? 'Részecske rögzítve.' : 'Részecske feloldva.';
       markCollisionPredictionDirty();
       return;
     }
 
-    if (hit) {
-      setSelectedParticle(hit);
+    if (mode === 'move' && collisionPointHit && selectedParticle && !selectedParticle.pinned) {
+      const currentSpeed = Math.hypot(selectedParticle.vx, selectedParticle.vy);
+      if (currentSpeed < MIN_DRAGGABLE_COLLISION_SPEED) {
+        statusEl.textContent = 'A túl lassú részecske előrejelzett ütközési pontja nem húzható.';
+        return;
+      }
+      beginPredictionDragPause();
+      draggedCollisionPoint = {
+        hitIndex: collisionPointHit.index,
+        wall: collisionPointHit.hit.wall,
+        speed: currentSpeed,
+        maxSteps: Math.max(
+          MIN_PREDICTION_STEPS,
+          Math.ceil(collisionPointHit.hit.stepIndex * COLLISION_DRAG_STEP_MULTIPLIER + COLLISION_DRAG_STEP_PADDING)
+        ),
+        sourceTopology: collisionPointHit.hit.topology || [],
+        lastSolvedAngle: Math.atan2(selectedParticle.vy, selectedParticle.vx),
+        topologyChanged: false,
+        targetX: collisionPointHit.hit.x,
+        targetY: collisionPointHit.hit.y
+      };
+      canvas.style.cursor = 'grabbing';
+      if (!updateDraggedCollisionTarget(selectedParticle, draggedCollisionPoint, x, y)) {
+        draggedCollisionPoint = null;
+        syncCanvasCursorToMode();
+      }
+      return;
     }
 
-    if (mode === 'move' && hit) {
-      dragged = hit;
-      dragOffX = hit.x - x;
-      dragOffY = hit.y - y;
-      hit.vx = 0;
-      hit.vy = 0;
+    if (particleHit) {
+      setSelectedParticle(particleHit);
+    }
+
+    if (mode === 'rotate' && selectedParticle && !selectedParticle.pinned) {
+      const currentSpeed = Math.hypot(selectedParticle.vx, selectedParticle.vy);
+      if (currentSpeed < MIN_DRAGGABLE_COLLISION_SPEED) {
+        statusEl.textContent = 'A túl lassú részecske pályája nem forgatható.';
+        return;
+      }
+      beginPredictionDragPause();
+      draggedPathRotation = {
+        particle: selectedParticle,
+        speed: currentSpeed,
+        startPointerAngle: Math.atan2(y - selectedParticle.y, x - selectedParticle.x),
+        startVelocityAngle: Math.atan2(selectedParticle.vy, selectedParticle.vx)
+      };
+      canvas.style.cursor = 'grabbing';
+      updateDraggedPathRotation(draggedPathRotation, x, y);
+      return;
+    }
+
+    if (mode === 'move' && particleHit) {
+      dragged = particleHit;
+      dragOffX = particleHit.x - x;
+      dragOffY = particleHit.y - y;
+      particleHit.vx = 0;
+      particleHit.vy = 0;
       dragVelocityX = 0;
       dragVelocityY = 0;
       dragLastMoveTime = performance.now();
       dragPositionHistory = [];
-      recordDragPosition(hit.x, hit.y, dragLastMoveTime);
+      recordDragPosition(particleHit.x, particleHit.y, dragLastMoveTime);
       resetTrackedTotalEnergy();
       canvas.style.cursor = 'grabbing';
       markCollisionPredictionDirty();
@@ -1193,6 +1551,18 @@
 
   function onPointerMove(event) {
     event.preventDefault();
+    if (draggedCollisionPoint && selectedParticle && !selectedParticle.pinned) {
+      const { x, y } = getPos(event);
+      updateDraggedCollisionTarget(selectedParticle, draggedCollisionPoint, x, y);
+      resetTrackedTotalEnergy();
+      return;
+    }
+    if (draggedPathRotation && draggedPathRotation.particle && !draggedPathRotation.particle.pinned) {
+      const { x, y } = getPos(event);
+      updateDraggedPathRotation(draggedPathRotation, x, y);
+      resetTrackedTotalEnergy();
+      return;
+    }
     if (!dragged) return;
     const { x, y } = getPos(event);
     const nextX = x + dragOffX;
@@ -1211,6 +1581,24 @@
   }
 
   function onPointerUp() {
+    if (draggedCollisionPoint) {
+      draggedCollisionPoint = null;
+      resetTrackedTotalEnergy();
+      endPredictionDragPause();
+      syncCanvasCursorToMode();
+      markCollisionPredictionDirty();
+      maybeRefreshCollisionPrediction();
+      return;
+    }
+    if (draggedPathRotation) {
+      draggedPathRotation = null;
+      resetTrackedTotalEnergy();
+      endPredictionDragPause();
+      syncCanvasCursorToMode();
+      markCollisionPredictionDirty();
+      maybeRefreshCollisionPrediction();
+      return;
+    }
     const timeSinceLastMove = performance.now() - dragLastMoveTime;
     if (dragged && !dragged.pinned && timeSinceLastMove <= DRAG_RELEASE_STALE_MS) {
       let releaseVelocityX = dragVelocityX * DRAG_RELEASE_VELOCITY_SCALE;
@@ -1233,7 +1621,7 @@
     dragLastMoveTime = 0;
     dragPositionHistory = [];
     resetTrackedTotalEnergy();
-    if (mode === 'move') canvas.style.cursor = 'grab';
+    syncCanvasCursorToMode();
     markCollisionPredictionDirty();
     maybeRefreshCollisionPrediction();
   }
@@ -1419,38 +1807,58 @@
     };
   }
 
-  function computeCollisionPredictionPreview() {
-    if (collisionPredictionCount <= 0 || !selectedParticle || selectedParticle.pinned) {
-      return { path: [], hits: [], orbitIndicators: [], replayBuffer: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
+  function computeCollisionPredictionPreview(options = {}) {
+    const targetParticleId = options.targetParticleId ?? (selectedParticle ? selectedParticle.id : null);
+    const maxHits = Math.max(0, Math.min(
+      MAX_COLLISION_PREDICTION_COUNT,
+      Math.round(options.maxHits ?? collisionPredictionCount)
+    ));
+    if (maxHits <= 0 || !targetParticleId) {
+      return emptyCollisionPredictionPreview();
     }
 
     const simulatedParticles = particles.map(cloneParticleState);
-    const simulatedTarget = simulatedParticles.find(particle => particle.id === selectedParticle.id);
-    if (!simulatedTarget) {
-      return { path: [], hits: [], orbitIndicators: [], replayBuffer: [], createdAtMs: performance.now(), maxPredictionTimeMs: PREDICTION_STEP_DURATION_MS };
+    const simulatedTarget = simulatedParticles.find(particle => particle.id === targetParticleId);
+    if (!simulatedTarget || simulatedTarget.pinned) {
+      return emptyCollisionPredictionPreview();
+    }
+    if (options.velocityOverride) {
+      simulatedTarget.vx = options.velocityOverride.vx;
+      simulatedTarget.vy = options.velocityOverride.vy;
     }
 
     const previewState = {
       targetId: simulatedTarget.id,
-      maxHits: collisionPredictionCount,
+      maxHits,
       hits: [],
       stepIndex: 0
     };
     const path = [{ x: simulatedTarget.x, y: simulatedTarget.y }];
     const replayBuffer = [];
     const orbitTrackers = createOrbitPreviewTrackers(simulatedTarget, simulatedParticles);
+    const topologyOrbitTrackers = createOrbitPreviewTrackers(simulatedTarget, simulatedParticles);
     let orbitIndicatorLimitReached = false;
     let simulatedTrackedEnergy = calculateTotalEnergyFor(simulatedParticles).total;
-    const maxSteps = Math.max(MIN_PREDICTION_STEPS, collisionPredictionCount * MAX_PREDICTION_STEPS_PER_HIT);
+    const maxSteps = Math.max(
+      MIN_PREDICTION_STEPS,
+      Math.round(options.maxSteps ?? (maxHits * MAX_PREDICTION_STEPS_PER_HIT))
+    );
 
-    for (let stepIndex = 0; stepIndex < maxSteps && previewState.hits.length < collisionPredictionCount; stepIndex++) {
+    for (let stepIndex = 0; stepIndex < maxSteps && previewState.hits.length < maxHits; stepIndex++) {
       const hitCountBeforeStep = previewState.hits.length;
       previewState.stepIndex = stepIndex + 1;
       const result = advanceParticleSystem(simulatedParticles, simulatedTrackedEnergy, null, previewState, PHYSICS_STEP_SCALE);
       simulatedTrackedEnergy = result.trackedEnergy;
+      recordOrbitPreviewStep(simulatedTarget, topologyOrbitTrackers);
       if (!orbitIndicatorLimitReached) {
         recordOrbitPreviewStep(simulatedTarget, orbitTrackers);
         orbitIndicatorLimitReached = previewState.hits.length > 0;
+      }
+      if (previewState.hits.length > hitCountBeforeStep) {
+        const topologySnapshot = buildTopologySnapshot(topologyOrbitTrackers);
+        for (let hitIndex = hitCountBeforeStep; hitIndex < previewState.hits.length; hitIndex++) {
+          previewState.hits[hitIndex].topology = topologySnapshot.map(entry => ({ ...entry }));
+        }
       }
       if (stepIndex % PREDICTION_PATH_SAMPLE_INTERVAL === 0 || previewState.hits.length > hitCountBeforeStep) {
         path.push({ x: simulatedTarget.x, y: simulatedTarget.y });
@@ -1481,7 +1889,7 @@
     if (paused) return;
 
     const buf = predictedCollisionPreview.replayBuffer;
-    if (!collisionPredictionDirty && !dragged && buf && replayBufferIndex < buf.length) {
+    if (!collisionPredictionDirty && !dragged && !draggedCollisionPoint && buf && replayBufferIndex < buf.length) {
       const snapshot = buf[replayBufferIndex++];
       for (const particle of particles) {
         if (particle.pinned) continue;
@@ -1506,7 +1914,8 @@
       resetTrackedTotalEnergy();
     }
 
-    const result = advanceParticleSystem(particles, trackedTotalEnergy, dragged, null, PHYSICS_STEP_SCALE);
+    const excludedParticle = dragged || (draggedCollisionPoint ? selectedParticle : null);
+    const result = advanceParticleSystem(particles, trackedTotalEnergy, excludedParticle, null, PHYSICS_STEP_SCALE);
     trackedTotalEnergy = result.trackedEnergy;
     if (result.collisionOccurred) {
       markCollisionPredictionDirty();
@@ -2039,6 +2448,14 @@
         ctx.fillStyle = `rgba(${PREDICTION_DOT_COLOR_RGB}, ${alpha})`;
         ctx.fill();
       }
+      if (draggedCollisionPoint && draggedCollisionPoint.hitIndex === index) {
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.arc(hit.x, hit.y, PREDICTION_MARKER_RADIUS + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = draggedCollisionPoint.topologyChanged ? TOPOLOGY_CHANGED_INDICATOR_COLOR : TOPOLOGY_PRESERVED_INDICATOR_COLOR;
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+      }
       ctx.restore();
     });
 
@@ -2154,7 +2571,7 @@
 
     const positive = makeParticle(cx - 120, cy, 2, 2);
     const negative = makeParticle(cx + 120, cy, 2, -4);
-    const weakPositive = makeParticle(cx+235, cy - 200, 2.4, 2, 1.13, 1);
+    const weakPositive = makeParticle(cx+235, cy - 200, 2.4, 2, 3, 3);
     positive.pinned = true;
     negative.pinned = true;
 
