@@ -201,6 +201,10 @@
       <input type="checkbox" id="collisionTopologyFlexInput" />
       <label for="collisionTopologyFlexInput" title="Engedi, hogy a részecske másik oldalról kerülje meg a többi részecskét, de csak akkor, ha a régi kerülési iránnyal már nem érhető el a célpont.">Szükség esetén a mozgás topológiája is változhat</label>
     </div>
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="dragDuringMotionInput" />
+      <label for="dragDuringMotionInput">Pálya mozgatása mozgás közben</label>
+    </div>
     <div class="button-row">
       <button class="btn-neutral" id="btnPause">⏸️ Szünet</button>
       <button class="btn-neutral" id="btnReset">🔄 Reset</button>
@@ -282,6 +286,7 @@
   const collisionPredictionCountVal = document.getElementById('collisionPredictionCountVal');
   const collisionPredictionStyleInput = document.getElementById('collisionPredictionStyle');
   const collisionTopologyFlexInput = document.getElementById('collisionTopologyFlexInput');
+  const dragDuringMotionInput = document.getElementById('dragDuringMotionInput');
 
   const modeButtons = [btnSelect, btnMove, btnRotate, btnAdd, btnDelete, btnPin];
   const PALETTES = {
@@ -451,6 +456,7 @@
   let collisionPredictionCount = DEFAULT_COLLISION_PREDICTION_COUNT;
   let collisionPredictionStyle = DEFAULT_COLLISION_PREDICTION_STYLE;
   let collisionTopologyFlexEnabled = false;
+  let dragDuringMotionEnabled = false;
   let nextParticleId = 1;
   let trackedTotalEnergy = null;
   let cachedWallChargeSignature = '';
@@ -460,6 +466,7 @@
   let replayBufferIndex = 0;
   let draggedCollisionPoint = null;
   let draggedPathRotation = null;
+  let dragPausedSimulation = false;
   window.addEventListener('resize', markCollisionPredictionDirty);
   function syncControlInputsToState() {
     massInput.value = String(nextParticleMass);
@@ -485,6 +492,26 @@
     collisionPredictionCountInput.value = String(collisionPredictionCount);
     collisionPredictionStyleInput.value = collisionPredictionStyle;
     collisionTopologyFlexInput.checked = collisionTopologyFlexEnabled;
+    dragDuringMotionInput.checked = dragDuringMotionEnabled;
+  }
+
+  function syncPauseButtonLabel() {
+    btnPause.textContent = paused ? '▶️ Folytatás' : '⏸️ Szünet';
+  }
+
+  function beginPredictionDragPause() {
+    dragPausedSimulation = false;
+    if (dragDuringMotionEnabled || paused) return;
+    paused = true;
+    dragPausedSimulation = true;
+    syncPauseButtonLabel();
+  }
+
+  function endPredictionDragPause() {
+    if (!dragPausedSimulation) return;
+    paused = false;
+    dragPausedSimulation = false;
+    syncPauseButtonLabel();
   }
 
   function radiusForMass(mass) {
@@ -944,7 +971,8 @@
 
   btnPause.addEventListener('click', () => {
     paused = !paused;
-    btnPause.textContent = paused ? '▶️ Folytatás' : '⏸️ Szünet';
+    dragPausedSimulation = false;
+    syncPauseButtonLabel();
   });
 
   btnReset.addEventListener('click', () => {
@@ -952,12 +980,13 @@
     dragged = null;
     draggedCollisionPoint = null;
     draggedPathRotation = null;
+    dragPausedSimulation = false;
     selectedParticle = null;
     dragVelocityX = 0;
     dragVelocityY = 0;
     dragLastMoveTime = 0;
     paused = false;
-    btnPause.textContent = '⏸️ Szünet';
+    syncPauseButtonLabel();
     initDemo();
     resetTrackedTotalEnergy();
     setMode('move');
@@ -1090,6 +1119,9 @@
   });
   collisionTopologyFlexInput.addEventListener('change', () => {
     collisionTopologyFlexEnabled = collisionTopologyFlexInput.checked;
+  });
+  dragDuringMotionInput.addEventListener('change', () => {
+    dragDuringMotionEnabled = dragDuringMotionInput.checked;
   });
 
   document.getElementById('timeScaleInput').addEventListener('input', (e) => {
@@ -1452,9 +1484,10 @@
     if (mode === 'move' && collisionPointHit && selectedParticle && !selectedParticle.pinned) {
       const currentSpeed = Math.hypot(selectedParticle.vx, selectedParticle.vy);
       if (currentSpeed < MIN_DRAGGABLE_COLLISION_SPEED) {
-        statusEl.textContent = 'Az álló részecske előrejelzett ütközési pontja nem húzható.';
+        statusEl.textContent = 'A túl lassú részecske előrejelzett ütközési pontja nem húzható.';
         return;
       }
+      beginPredictionDragPause();
       draggedCollisionPoint = {
         hitIndex: collisionPointHit.index,
         wall: collisionPointHit.hit.wall,
@@ -1484,9 +1517,10 @@
     if (mode === 'rotate' && selectedParticle && !selectedParticle.pinned) {
       const currentSpeed = Math.hypot(selectedParticle.vx, selectedParticle.vy);
       if (currentSpeed < MIN_DRAGGABLE_COLLISION_SPEED) {
-        statusEl.textContent = 'Az álló részecske pályája nem forgatható.';
+        statusEl.textContent = 'A túl lassú részecske pályája nem forgatható.';
         return;
       }
+      beginPredictionDragPause();
       draggedPathRotation = {
         particle: selectedParticle,
         speed: currentSpeed,
@@ -1550,6 +1584,7 @@
     if (draggedCollisionPoint) {
       draggedCollisionPoint = null;
       resetTrackedTotalEnergy();
+      endPredictionDragPause();
       syncCanvasCursorToMode();
       markCollisionPredictionDirty();
       maybeRefreshCollisionPrediction();
@@ -1558,6 +1593,7 @@
     if (draggedPathRotation) {
       draggedPathRotation = null;
       resetTrackedTotalEnergy();
+      endPredictionDragPause();
       syncCanvasCursorToMode();
       markCollisionPredictionDirty();
       maybeRefreshCollisionPrediction();
