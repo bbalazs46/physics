@@ -198,7 +198,7 @@
     </div>
     <div class="toggle-btn mt-8">
       <input type="checkbox" id="collisionTopologyFlexInput" />
-      <label for="collisionTopologyFlexInput">Szükség esetén a mozgás topológiája is változhat</label>
+      <label for="collisionTopologyFlexInput" title="Engedi, hogy a részecske másik oldalról kerülje meg a többi részecskét, de csak akkor, ha a régi kerülési iránnyal már nem érhető el a célpont.">Szükség esetén a mozgás topológiája is változhat</label>
     </div>
     <div class="button-row">
       <button class="btn-neutral" id="btnPause">⏸️ Szünet</button>
@@ -363,18 +363,26 @@
   const PREDICTION_STEP_DURATION_MS = 1000 / SIMULATION_STEPS_PER_SECOND;
   const PREDICTION_DOT_MIN_ALPHA = 0.18;
   const PREDICTION_DOT_ALPHA_RANGE = 0.68;
-  const COLLISION_DRAG_LOCAL_SEARCH_RANGE = Math.PI / 2.4;
+  const COLLISION_DRAG_LOCAL_SEARCH_DIVISOR = 2.4;
+  const COLLISION_DRAG_LOCAL_SEARCH_RANGE = Math.PI / COLLISION_DRAG_LOCAL_SEARCH_DIVISOR;
   const COLLISION_DRAG_LOCAL_SAMPLE_COUNT = 15;
   const COLLISION_DRAG_WIDE_SAMPLE_COUNT = 25;
   const COLLISION_DRAG_REFINE_SAMPLE_COUNT = 9;
   const COLLISION_DRAG_REFINE_PASSES = 2;
   const COLLISION_DRAG_TARGET_TOLERANCE = 3;
+  const COLLISION_DRAG_STEP_MULTIPLIER = 2;
   const COLLISION_DRAG_STEP_PADDING = 240;
-  const TOPOLOGY_MATCH_ANGLE_TOLERANCE = Math.PI * 0.8;
-  const TOPOLOGY_SIGNIFICANCE_THRESHOLD = (Math.PI / 10) * 0.75;
+  const COLLISION_DRAG_REFINE_RANGE_DIVISOR = 3;
+  const MIN_DRAGGABLE_COLLISION_SPEED = 1e-6;
+  const TOPOLOGY_MATCH_ANGLE_TOLERANCE_RATIO = 0.8;
+  const TOPOLOGY_MATCH_ANGLE_TOLERANCE = Math.PI * TOPOLOGY_MATCH_ANGLE_TOLERANCE_RATIO;
+  const TOPOLOGY_SIGNIFICANCE_RATIO = 0.75;
+  const TOPOLOGY_SIGNIFICANCE_THRESHOLD = (Math.PI / 10) * TOPOLOGY_SIGNIFICANCE_RATIO;
+  const TOPOLOGY_PRESERVED_INDICATOR_COLOR = 'rgba(255, 255, 255, 0.92)';
   const PREDICTION_DOT_COLOR_RGB = '255, 82, 82';
   const FULL_TURN_RADIANS = Math.PI * 2;
   const ORBIT_INDICATOR_COLOR_RGB = '255, 240, 170';
+  const TOPOLOGY_CHANGED_INDICATOR_COLOR = `rgba(${ORBIT_INDICATOR_COLOR_RGB}, 0.95)`;
   const ORBIT_INDICATOR_RADIUS_OFFSET = 12;
   const ORBIT_INDICATOR_MIN_SWEEP_RADIANS = Math.PI / 10;
   const ORBIT_INDICATOR_FADE_START_SWEEP_RADIANS = Math.PI;
@@ -888,7 +896,7 @@
 
     const configs = {
       select: { button: btnSelect, cursor: 'pointer', text: 'Kattints a vászonra a legközelebbi részecske kijelöléséhez.' },
-      move: { button: btnMove, cursor: 'grab', text: 'Fogd meg és mozgasd a részecskéket, vagy húzd az előre jelzett ütközési pontokat.' },
+      move: { button: btnMove, cursor: 'grab', text: 'Fogd meg és mozgasd a részecskéket, vagy húzd az előrejelzett ütközési pontokat.' },
       add: { button: btnAdd, cursor: 'crosshair', text: 'Kattints a vászonra új részecske hozzáadásához.' },
       delete: { button: btnDelete, cursor: 'pointer', text: 'Kattints egy részecskére a törléséhez.' },
       pin: { button: btnPin, cursor: 'pointer', text: 'Kattints egy részecskére a rögzítéshez vagy feloldáshoz.' }
@@ -1278,7 +1286,7 @@
     }
     if (!bestCandidate) return null;
 
-    let refineRange = COLLISION_DRAG_LOCAL_SEARCH_RANGE / 3;
+    let refineRange = COLLISION_DRAG_LOCAL_SEARCH_RANGE / COLLISION_DRAG_REFINE_RANGE_DIVISOR;
     for (let passIndex = 0; passIndex < COLLISION_DRAG_REFINE_PASSES; passIndex++) {
       const refinedCandidate = searchCollisionDragCandidates(
         particle,
@@ -1292,7 +1300,7 @@
       if (refinedCandidate && refinedCandidate.distance < bestCandidate.distance) {
         bestCandidate = refinedCandidate;
       }
-      refineRange /= 3;
+      refineRange /= COLLISION_DRAG_REFINE_RANGE_DIVISOR;
     }
 
     return bestCandidate;
@@ -1324,8 +1332,8 @@
   function onPointerDown(event) {
     event.preventDefault();
     const { x, y } = getPos(event);
-    const collisionHit = collisionPointAt(x, y);
-    const hit = particleAt(x, y);
+    const collisionPointHit = collisionPointAt(x, y);
+    const particleHit = particleAt(x, y);
 
     if (mode === 'select') {
       const nearest = nearestParticle(x, y);
@@ -1333,7 +1341,7 @@
       return;
     }
 
-    if (mode === 'add' && !hit) {
+    if (mode === 'add' && !particleHit) {
       const particle = makeParticle(x, y);
       particles.push(particle);
       setSelectedParticle(particle);
@@ -1344,9 +1352,9 @@
       return;
     }
 
-    if (mode === 'delete' && hit) {
-      particles = particles.filter(particle => particle !== hit);
-      if (selectedParticle === hit) {
+    if (mode === 'delete' && particleHit) {
+      particles = particles.filter(particle => particle !== particleHit);
+      if (selectedParticle === particleHit) {
         selectedParticle = null;
       }
       resetTrackedTotalEnergy();
@@ -1355,38 +1363,38 @@
       return;
     }
 
-    if (mode === 'pin' && hit) {
-      hit.pinned = !hit.pinned;
-      if (hit.pinned) {
-        hit.vx = 0;
-        hit.vy = 0;
+    if (mode === 'pin' && particleHit) {
+      particleHit.pinned = !particleHit.pinned;
+      if (particleHit.pinned) {
+        particleHit.vx = 0;
+        particleHit.vy = 0;
       }
-      setSelectedParticle(hit);
+      setSelectedParticle(particleHit);
       resetTrackedTotalEnergy();
-      statusEl.textContent = hit.pinned ? 'Részecske rögzítve.' : 'Részecske feloldva.';
+      statusEl.textContent = particleHit.pinned ? 'Részecske rögzítve.' : 'Részecske feloldva.';
       markCollisionPredictionDirty();
       return;
     }
 
-    if (mode === 'move' && collisionHit && selectedParticle && !selectedParticle.pinned) {
+    if (mode === 'move' && collisionPointHit && selectedParticle && !selectedParticle.pinned) {
       const currentSpeed = Math.hypot(selectedParticle.vx, selectedParticle.vy);
-      if (currentSpeed < 1e-6) {
-        statusEl.textContent = 'Az álló részecske előre jelzett ütközési pontja nem mozgatható.';
+      if (currentSpeed < MIN_DRAGGABLE_COLLISION_SPEED) {
+        statusEl.textContent = 'Az álló részecske előrejelzett ütközési pontja nem húzható.';
         return;
       }
       draggedCollisionPoint = {
-        hitIndex: collisionHit.index,
-        wall: collisionHit.hit.wall,
+        hitIndex: collisionPointHit.index,
+        wall: collisionPointHit.hit.wall,
         speed: currentSpeed,
         maxSteps: Math.max(
           MIN_PREDICTION_STEPS,
-          Math.ceil(collisionHit.hit.stepIndex * 2 + COLLISION_DRAG_STEP_PADDING)
+          Math.ceil(collisionPointHit.hit.stepIndex * COLLISION_DRAG_STEP_MULTIPLIER + COLLISION_DRAG_STEP_PADDING)
         ),
-        sourceTopology: collisionHit.hit.topology || [],
+        sourceTopology: collisionPointHit.hit.topology || [],
         lastSolvedAngle: Math.atan2(selectedParticle.vy, selectedParticle.vx),
         topologyChanged: false,
-        targetX: collisionHit.hit.x,
-        targetY: collisionHit.hit.y
+        targetX: collisionPointHit.hit.x,
+        targetY: collisionPointHit.hit.y
       };
       canvas.style.cursor = 'grabbing';
       if (!updateDraggedCollisionTarget(selectedParticle, draggedCollisionPoint, x, y)) {
@@ -1396,21 +1404,21 @@
       return;
     }
 
-    if (hit) {
-      setSelectedParticle(hit);
+    if (particleHit) {
+      setSelectedParticle(particleHit);
     }
 
-    if (mode === 'move' && hit) {
-      dragged = hit;
-      dragOffX = hit.x - x;
-      dragOffY = hit.y - y;
-      hit.vx = 0;
-      hit.vy = 0;
+    if (mode === 'move' && particleHit) {
+      dragged = particleHit;
+      dragOffX = particleHit.x - x;
+      dragOffY = particleHit.y - y;
+      particleHit.vx = 0;
+      particleHit.vy = 0;
       dragVelocityX = 0;
       dragVelocityY = 0;
       dragLastMoveTime = performance.now();
       dragPositionHistory = [];
-      recordDragPosition(hit.x, hit.y, dragLastMoveTime);
+      recordDragPosition(particleHit.x, particleHit.y, dragLastMoveTime);
       resetTrackedTotalEnergy();
       canvas.style.cursor = 'grabbing';
       markCollisionPredictionDirty();
@@ -1688,7 +1696,7 @@
     const path = [{ x: simulatedTarget.x, y: simulatedTarget.y }];
     const replayBuffer = [];
     const orbitTrackers = createOrbitPreviewTrackers(simulatedTarget, simulatedParticles);
-    const topologyTrackers = createOrbitPreviewTrackers(simulatedTarget, simulatedParticles);
+    const topologyOrbitTrackers = createOrbitPreviewTrackers(simulatedTarget, simulatedParticles);
     let orbitIndicatorLimitReached = false;
     let simulatedTrackedEnergy = calculateTotalEnergyFor(simulatedParticles).total;
     const maxSteps = Math.max(
@@ -1701,13 +1709,13 @@
       previewState.stepIndex = stepIndex + 1;
       const result = advanceParticleSystem(simulatedParticles, simulatedTrackedEnergy, null, previewState, PHYSICS_STEP_SCALE);
       simulatedTrackedEnergy = result.trackedEnergy;
-      recordOrbitPreviewStep(simulatedTarget, topologyTrackers);
+      recordOrbitPreviewStep(simulatedTarget, topologyOrbitTrackers);
       if (!orbitIndicatorLimitReached) {
         recordOrbitPreviewStep(simulatedTarget, orbitTrackers);
         orbitIndicatorLimitReached = previewState.hits.length > 0;
       }
       if (previewState.hits.length > hitCountBeforeStep) {
-        const topologySnapshot = buildTopologySnapshot(topologyTrackers);
+        const topologySnapshot = buildTopologySnapshot(topologyOrbitTrackers);
         for (let hitIndex = hitCountBeforeStep; hitIndex < previewState.hits.length; hitIndex++) {
           previewState.hits[hitIndex].topology = topologySnapshot.map(entry => ({ ...entry }));
         }
@@ -2304,7 +2312,7 @@
         ctx.beginPath();
         ctx.setLineDash([4, 4]);
         ctx.arc(hit.x, hit.y, PREDICTION_MARKER_RADIUS + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = draggedCollisionPoint.topologyChanged ? 'rgba(255, 240, 170, 0.95)' : 'rgba(255, 255, 255, 0.92)';
+        ctx.strokeStyle = draggedCollisionPoint.topologyChanged ? TOPOLOGY_CHANGED_INDICATOR_COLOR : TOPOLOGY_PRESERVED_INDICATOR_COLOR;
         ctx.lineWidth = 1.6;
         ctx.stroke();
       }
