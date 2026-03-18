@@ -358,7 +358,7 @@
   // Keep the reference rate at the tuned physics cadence so changing the
   // simulation step rate does not change the apparent motion speed.
   const PHYSICS_REFERENCE_STEPS_PER_SECOND = 120;
-  const SIMULATION_STEPS_PER_SECOND = 1200;
+  const SIMULATION_STEPS_PER_SECOND = 12000;
   const PHYSICS_STEP_SCALE = PHYSICS_REFERENCE_STEPS_PER_SECOND / SIMULATION_STEPS_PER_SECOND;
   const DEFAULT_COLLISION_PREDICTION_COUNT = 0;
   const DEFAULT_COLLISION_PREDICTION_STYLE = 'path-numbered';
@@ -2569,9 +2569,9 @@
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
 
-    const positive = makeParticle(cx - 120, cy, 2, 2);
-    const negative = makeParticle(cx + 120, cy, 2, -4);
-    const weakPositive = makeParticle(cx+235, cy - 200, 2.4, 2, 3, 3);
+    const positive = makeParticle(cx - 120, cy, 2, 2.8);
+    const negative = makeParticle(cx + 120, cy, 2, -4.0);
+    const weakPositive = makeParticle(cx+235, cy - 200, .3, 1.2, 4, 2);
     positive.pinned = true;
     negative.pinned = true;
 
