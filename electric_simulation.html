@@ -80,6 +80,11 @@
       <label for="autoPotentialZeroInput">Nullapotenciál automatikus középre igazítása a képernyő átlaga alapján</label>
     </div>
 
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="particlesVisibleInput" checked aria-label="Részecskék megjelenítése" />
+      <label for="particlesVisibleInput">Részecskék megjelenítése</label>
+    </div>
+
     <div class="slider-row mt-10">
       <div class="slider-label">
         <span>Coulomb-erő</span>
@@ -262,6 +267,7 @@
   const potentialZeroOffsetInput = document.getElementById('potentialZeroOffsetInput');
   const potentialZeroOffsetVal = document.getElementById('potentialZeroOffsetVal');
   const autoPotentialZeroInput = document.getElementById('autoPotentialZeroInput');
+  const particlesVisibleInput = document.getElementById('particlesVisibleInput');
   // const inverseRepulsionInput = document.getElementById('inverseRepulsionInput');
   const dampingInput = document.getElementById('dampingInput');
   const dampingVal = document.getElementById('dampingVal');
@@ -364,7 +370,7 @@
   const DEFAULT_COLLISION_PREDICTION_STYLE = 'path-numbered';
   const MAX_COLLISION_PREDICTION_COUNT = 12;
   const MIN_PREDICTION_STEPS = 240;
-  const MAX_PREDICTION_STEPS_PER_HIT = 18000;
+  const MAX_PREDICTION_STEPS_PER_HIT = 36000;
   const PREDICTION_PATH_SAMPLE_INTERVAL = 2;
   const PREDICTION_MARKER_RADIUS = 9;
   const PREDICTION_STEP_DURATION_MS = 1000 / SIMULATION_STEPS_PER_SECOND;
@@ -442,6 +448,7 @@
   let colorScheme = DEFAULT_COLOR_SCHEME;
   let potentialZeroOffsetRatio = DEFAULT_POTENTIAL_ZERO_OFFSET_RATIO;
   let autoPotentialZeroEnabled = DEFAULT_AUTO_POTENTIAL_ZERO_ENABLED;
+  let particlesVisible = true;
   let trailLength = DEFAULT_TRAIL_LENGTH;
   let energyCorrectionEnabled = DEFAULT_ENERGY_CORRECTION_ENABLED;
   let wallChargeEnabled = DEFAULT_WALL_CHARGE_ENABLED;
@@ -475,6 +482,7 @@
     colorSchemeInput.value = colorScheme;
     potentialZeroOffsetInput.value = String(potentialZeroOffsetRatio);
     autoPotentialZeroInput.checked = autoPotentialZeroEnabled;
+    particlesVisibleInput.checked = particlesVisible;
     forceInput.value = String(fieldStrength);
     dampingInput.value = String(damping);
     trailLengthInput.value = String(trailLength);
@@ -1025,6 +1033,11 @@
 
   autoPotentialZeroInput.addEventListener('change', () => {
     autoPotentialZeroEnabled = autoPotentialZeroInput.checked;
+    updateEditorValues();
+  });
+
+  particlesVisibleInput.addEventListener('change', () => {
+    particlesVisible = particlesVisibleInput.checked;
     updateEditorValues();
   });
 
@@ -2352,6 +2365,8 @@
   }
 
   function drawParticles() {
+    if (!particlesVisible) return;
+
     for (const particle of particles) {
       const color = particleColor(particle);
 
@@ -2569,9 +2584,17 @@
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
 
+
     const positive = makeParticle(cx - 120, cy, 2, 2.8);
     const negative = makeParticle(cx + 120, cy, 2, -4.0);
     const weakPositive = makeParticle(cx+235, cy - 200, .3, 1.2, 4, 2);
+
+/*
+    const positive = makeParticle(cx - 120, cy, 2, 2);
+    const negative = makeParticle(cx + 120, cy, 2, -4);
+    const weakPositive = makeParticle(cx+235, cy - 200, 2.4, 2, 5, 5);
+*/
+
     positive.pinned = true;
     negative.pinned = true;
 
