@@ -16,6 +16,7 @@
     <div class="btn-group">
       <button class="btn-neutral" id="btnSelect">🎯 Részecske kijelölése</button>
       <button class="btn-neutral" id="btnMove">✋ Részecskék mozgatása</button>
+      <button class="btn-neutral" id="btnRotate">🔄 Pálya változtatása</button>
       <button class="btn-add" id="btnAdd">➕ Részecske hozzáadása</button>
       <button class="btn-delete" id="btnDelete">🗑️ Részecske törlése</button>
       <button class="btn-pin" id="btnPin">📌 Részecske rögzítése</button>
@@ -240,6 +241,7 @@
   const statusEl = document.getElementById('status');
   const btnSelect = document.getElementById('btnSelect');
   const btnMove = document.getElementById('btnMove');
+  const btnRotate = document.getElementById('btnRotate');
   const btnAdd = document.getElementById('btnAdd');
   const btnDelete = document.getElementById('btnDelete');
   const btnPin = document.getElementById('btnPin');
@@ -281,7 +283,7 @@
   const collisionPredictionStyleInput = document.getElementById('collisionPredictionStyle');
   const collisionTopologyFlexInput = document.getElementById('collisionTopologyFlexInput');
 
-  const modeButtons = [btnSelect, btnMove, btnAdd, btnDelete, btnPin];
+  const modeButtons = [btnSelect, btnMove, btnRotate, btnAdd, btnDelete, btnPin];
   const PALETTES = {
     forest: { positive: '#f4e04d', negative: '#0b6e4f', neutral: '#b0bec5' },
     classic: { positive: '#ff5252', negative: '#0b3d91', neutral: '#b0bec5' }
@@ -457,6 +459,7 @@
   let collisionPredictionDirty = true;
   let replayBufferIndex = 0;
   let draggedCollisionPoint = null;
+  let draggedPathRotation = null;
   window.addEventListener('resize', markCollisionPredictionDirty);
   function syncControlInputsToState() {
     massInput.value = String(nextParticleMass);
@@ -903,6 +906,7 @@
     const configs = {
       select: { button: btnSelect, cursor: 'pointer', text: 'Kattints a vászonra a legközelebbi részecske kijelöléséhez.' },
       move: { button: btnMove, cursor: 'grab', text: 'Fogd meg és mozgasd a részecskéket, vagy húzd az előrejelzett ütközési pontokat.' },
+      rotate: { button: btnRotate, cursor: 'cell', text: 'Húzd az egeret a kijelölt részecske körül a pálya elforgatásához.' },
       add: { button: btnAdd, cursor: 'crosshair', text: 'Kattints a vászonra új részecske hozzáadásához.' },
       delete: { button: btnDelete, cursor: 'pointer', text: 'Kattints egy részecskére a törléséhez.' },
       pin: { button: btnPin, cursor: 'pointer', text: 'Kattints egy részecskére a rögzítéshez vagy feloldáshoz.' }
@@ -924,11 +928,16 @@
       canvas.style.cursor = 'crosshair';
       return;
     }
+    if (mode === 'rotate') {
+      canvas.style.cursor = 'cell';
+      return;
+    }
     canvas.style.cursor = 'pointer';
   }
 
   btnSelect.addEventListener('click', () => setMode(mode === 'select' ? 'move' : 'select'));
   btnMove.addEventListener('click', () => setMode('move'));
+  btnRotate.addEventListener('click', () => setMode(mode === 'rotate' ? 'move' : 'rotate'));
   btnAdd.addEventListener('click', () => setMode('add'));
   btnDelete.addEventListener('click', () => setMode(mode === 'delete' ? 'move' : 'delete'));
   btnPin.addEventListener('click', () => setMode(mode === 'pin' ? 'move' : 'pin'));
@@ -942,6 +951,7 @@
     particles = [];
     dragged = null;
     draggedCollisionPoint = null;
+    draggedPathRotation = null;
     selectedParticle = null;
     dragVelocityX = 0;
     dragVelocityY = 0;
@@ -1381,6 +1391,17 @@
     return true;
   }
 
+  function updateDraggedPathRotation(rotationState, pointerX, pointerY) {
+    const pointerAngle = Math.atan2(pointerY - rotationState.particle.y, pointerX - rotationState.particle.x);
+    const angleDelta = normalizeAngleDelta(pointerAngle - rotationState.startPointerAngle);
+    const nextAngle = rotationState.startVelocityAngle + angleDelta;
+    rotationState.particle.vx = Math.cos(nextAngle) * rotationState.speed;
+    rotationState.particle.vy = Math.sin(nextAngle) * rotationState.speed;
+    markCollisionPredictionDirty();
+    maybeRefreshCollisionPrediction();
+    replayBufferIndex = 0;
+  }
+
   function onPointerDown(event) {
     event.preventDefault();
     const { x, y } = getPos(event);
@@ -1460,6 +1481,23 @@
       setSelectedParticle(particleHit);
     }
 
+    if (mode === 'rotate' && selectedParticle && !selectedParticle.pinned) {
+      const currentSpeed = Math.hypot(selectedParticle.vx, selectedParticle.vy);
+      if (currentSpeed < MIN_DRAGGABLE_COLLISION_SPEED) {
+        statusEl.textContent = 'Az álló részecske pályája nem forgatható.';
+        return;
+      }
+      draggedPathRotation = {
+        particle: selectedParticle,
+        speed: currentSpeed,
+        startPointerAngle: Math.atan2(y - selectedParticle.y, x - selectedParticle.x),
+        startVelocityAngle: Math.atan2(selectedParticle.vy, selectedParticle.vx)
+      };
+      canvas.style.cursor = 'grabbing';
+      updateDraggedPathRotation(draggedPathRotation, x, y);
+      return;
+    }
+
     if (mode === 'move' && particleHit) {
       dragged = particleHit;
       dragOffX = particleHit.x - x;
@@ -1485,6 +1523,12 @@
       resetTrackedTotalEnergy();
       return;
     }
+    if (draggedPathRotation && draggedPathRotation.particle && !draggedPathRotation.particle.pinned) {
+      const { x, y } = getPos(event);
+      updateDraggedPathRotation(draggedPathRotation, x, y);
+      resetTrackedTotalEnergy();
+      return;
+    }
     if (!dragged) return;
     const { x, y } = getPos(event);
     const nextX = x + dragOffX;
@@ -1505,6 +1549,14 @@
   function onPointerUp() {
     if (draggedCollisionPoint) {
       draggedCollisionPoint = null;
+      resetTrackedTotalEnergy();
+      syncCanvasCursorToMode();
+      markCollisionPredictionDirty();
+      maybeRefreshCollisionPrediction();
+      return;
+    }
+    if (draggedPathRotation) {
+      draggedPathRotation = null;
       resetTrackedTotalEnergy();
       syncCanvasCursorToMode();
       markCollisionPredictionDirty();
