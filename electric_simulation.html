@@ -1038,6 +1038,7 @@
 
   particlesVisibleInput.addEventListener('change', () => {
     particlesVisible = particlesVisibleInput.checked;
+    updateEditorValues();
   });
 
   forceInput.addEventListener('input', () => {
