@@ -80,6 +80,11 @@
       <label for="autoPotentialZeroInput">Nullapotenciál automatikus középre igazítása a képernyő átlaga alapján</label>
     </div>
 
+    <div class="toggle-btn mt-8">
+      <input type="checkbox" id="particlesVisibleInput" checked aria-label="Részecskék megjelenítése" />
+      <label for="particlesVisibleInput">Részecskék megjelenítése</label>
+    </div>
+
     <div class="slider-row mt-10">
       <div class="slider-label">
         <span>Coulomb-erő</span>
@@ -262,6 +267,7 @@
   const potentialZeroOffsetInput = document.getElementById('potentialZeroOffsetInput');
   const potentialZeroOffsetVal = document.getElementById('potentialZeroOffsetVal');
   const autoPotentialZeroInput = document.getElementById('autoPotentialZeroInput');
+  const particlesVisibleInput = document.getElementById('particlesVisibleInput');
   // const inverseRepulsionInput = document.getElementById('inverseRepulsionInput');
   const dampingInput = document.getElementById('dampingInput');
   const dampingVal = document.getElementById('dampingVal');
@@ -442,6 +448,7 @@
   let colorScheme = DEFAULT_COLOR_SCHEME;
   let potentialZeroOffsetRatio = DEFAULT_POTENTIAL_ZERO_OFFSET_RATIO;
   let autoPotentialZeroEnabled = DEFAULT_AUTO_POTENTIAL_ZERO_ENABLED;
+  let particlesVisible = true;
   let trailLength = DEFAULT_TRAIL_LENGTH;
   let energyCorrectionEnabled = DEFAULT_ENERGY_CORRECTION_ENABLED;
   let wallChargeEnabled = DEFAULT_WALL_CHARGE_ENABLED;
@@ -475,6 +482,7 @@
     colorSchemeInput.value = colorScheme;
     potentialZeroOffsetInput.value = String(potentialZeroOffsetRatio);
     autoPotentialZeroInput.checked = autoPotentialZeroEnabled;
+    particlesVisibleInput.checked = particlesVisible;
     forceInput.value = String(fieldStrength);
     dampingInput.value = String(damping);
     trailLengthInput.value = String(trailLength);
@@ -1025,6 +1033,11 @@
 
   autoPotentialZeroInput.addEventListener('change', () => {
     autoPotentialZeroEnabled = autoPotentialZeroInput.checked;
+    updateEditorValues();
+  });
+
+  particlesVisibleInput.addEventListener('change', () => {
+    particlesVisible = particlesVisibleInput.checked;
     updateEditorValues();
   });
 
@@ -2352,6 +2365,8 @@
   }
 
   function drawParticles() {
+    if (!particlesVisible) return;
+
     for (const particle of particles) {
       const color = particleColor(particle);
 
